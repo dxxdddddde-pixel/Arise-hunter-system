@@ -1,11 +1,11 @@
 /* =========================================================
    ARISE // Google Health uplink
    ---------------------------------------------------------
-   Browser-side Google Health REST integration. Uses the
-   Authorization Code flow with PKCE (S256) and CSRF state,
-   with no backend and no client secret. Google Health data
-   is mapped into the same live snapshot shape consumed by
-   SystemData.buildLiveResult().
+   Browser-side Google Health REST integration. Uses Google
+   Identity Services token model (browser access token), with
+   no backend, no redirect and no client secret. Google Health
+   data is mapped into the same live snapshot shape consumed
+   by SystemData.buildLiveResult().
    ========================================================= */
 (function () {
   "use strict";
@@ -15,8 +15,6 @@
   const $ = (sel) => document.querySelector(sel);
 
   const API = "https://health.googleapis.com/v4";
-  const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-  const TOKEN_URL = "https://oauth2.googleapis.com/token";
   const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 
   const ACTIVITY_SCOPE = "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly";
@@ -29,13 +27,7 @@
     [SLEEP_SCOPE]: "Sleep"
   };
 
-  const OAUTH = {
-    verifier: "arise-health-oauth-verifier",
-    state: "arise-health-oauth-state",
-    action: "arise-health-oauth-action",
-    redirect: "arise-health-oauth-redirect"
-  };
-  const memoryStore = {};
+  const GIS_TIMEOUT = 10000;
 
   const WINDOW_DAYS = 40;
   const SHORT_WINDOW_DAYS = 14;
@@ -45,6 +37,10 @@
   let expiresAt = 0;
   let granted = [];
   let scopeKnown = true;
+  let tokenClient = null;
+  let tokenClientReady = false;
+  let pendingAction = "";
+  let signInError = "";
   let status = {
     configured: false,
     ready: false,
@@ -146,34 +142,10 @@
     return id && !/^(YOUR|PASTE|ADD)_/i.test(id) ? id : "";
   }
 
-  function redirectUri() {
-    const cfg = window.ARISE_FIREBASE_CONFIG || {};
-    const configured = String(cfg.healthRedirectUri || "").trim();
-    if (configured && !/^(YOUR|PASTE|ADD)_/i.test(configured)) return configured;
-    return location.origin + location.pathname;
-  }
-
-  function getStored(key) {
-    try {
-      const value = sessionStorage.getItem(key);
-      return value === null ? memoryStore[key] || null : value;
-    } catch (err) {
-      return memoryStore[key] || null;
-    }
-  }
-
-  function setStored(key, value) {
-    memoryStore[key] = value;
-    try { sessionStorage.setItem(key, value); } catch (err) { /* private mode */ }
-  }
-
-  function clearStored(key) {
-    delete memoryStore[key];
-    try { sessionStorage.removeItem(key); } catch (err) { /* private mode */ }
-  }
-
-  function clearOAuthState() {
-    Object.keys(OAUTH).forEach((key) => clearStored(OAUTH[key]));
+  function refreshConfigured() {
+    status.configured = !!clientId();
+    status.ready = status.configured && tokenClientReady;
+    return status.configured;
   }
 
   function emit() {
@@ -216,8 +188,14 @@
     if (err.status === 401) {
       return "Google Health authorization expired. Press SYNC GOOGLE HEALTH to authorize again.";
     }
-    if (/redirect_uri_mismatch/i.test(raw)) {
-      return raw + " Register the exact redirect URI shown in the browser address bar setup: use healthRedirectUri in firebase-config.js or let the app use the current page URL.";
+    if (/popup_closed_by_user/i.test(raw)) {
+      return "The Google authorization window closed before consent finished. Press SYNC GOOGLE HEALTH to try again.";
+    }
+    if (/access_denied|permission_denied/i.test(raw)) {
+      return "Google Health access was not granted. Approve at least one of the three read scopes to sync.";
+    }
+    if (/origin_mismatch|invalid_client|unauthorized_client|client_secret is missing/i.test(raw)) {
+      return raw + " Use a Web application OAuth client and register https://dxxdddddde-pixel.github.io as an Authorized JavaScript origin. Do not add a client secret.";
     }
     return raw;
   }
@@ -243,34 +221,53 @@
   }
 
   /* ---------------------------------------------------------
-     OAuth 2.0 Authorization Code + PKCE
+     Google Identity Services token flow
      --------------------------------------------------------- */
-  function randomBytes(count) {
-    const bytes = new Uint8Array(count);
-    if (window.crypto && typeof window.crypto.getRandomValues === "function") {
-      window.crypto.getRandomValues(bytes);
-    } else {
-      for (let i = 0; i < count; i++) bytes[i] = Math.floor(Math.random() * 256);
+  function oauth2Api() {
+    const g = window.google;
+    return g && g.accounts && g.accounts.oauth2 ? g.accounts.oauth2 : null;
+  }
+
+  function waitForOAuth2() {
+    if (oauth2Api()) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const started = Date.now();
+      const tick = () => {
+        if (oauth2Api()) {
+          resolve(true);
+          return;
+        }
+        if (Date.now() - started >= GIS_TIMEOUT) {
+          resolve(false);
+          return;
+        }
+        setTimeout(tick, 100);
+      };
+      tick();
+    });
+  }
+
+  function ensureTokenClient() {
+    const api = oauth2Api();
+    if (!api || typeof api.initTokenClient !== "function") return false;
+    if (tokenClient) {
+      tokenClientReady = true;
+      return true;
     }
-    return bytes;
-  }
-
-  function base64url(bytes) {
-    let binary = "";
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  }
-
-  function randomToken(count) {
-    return base64url(randomBytes(count || 32));
-  }
-
-  function codeChallenge(verifier) {
-    if (!window.crypto || !window.crypto.subtle || typeof window.TextEncoder !== "function") {
-      throw new Error("Google Health PKCE requires a secure HTTPS or localhost origin. Open this page from GitHub Pages or http://localhost:8080.");
+    try {
+      tokenClient = api.initTokenClient({
+        client_id: clientId(),
+        scope: SCOPES.join(" "),
+        prompt: "consent",
+        callback: onTokenResponse
+      });
+      tokenClientReady = !!tokenClient && typeof tokenClient.requestAccessToken === "function";
+      return tokenClientReady;
+    } catch (err) {
+      tokenClient = null;
+      tokenClientReady = false;
+      return false;
     }
-    const data = new window.TextEncoder().encode(verifier);
-    return window.crypto.subtle.digest("SHA-256", data).then((buffer) => base64url(new Uint8Array(buffer)));
   }
 
   function scopeGranted(scope) {
@@ -282,88 +279,14 @@
     return !scopeKnown || scopeGranted(scope);
   }
 
-  function startOAuth(action) {
-    const id = clientId();
-    if (!id) {
-      handleError("GOOGLE HEALTH SETUP REQUIRED", new Error("Add healthClientId to firebase-config.js before connecting Google Health."), true);
-      return Promise.resolve();
-    }
-
-    const verifier = randomToken(32);
-    const state = randomToken(24);
-    const redirect = redirectUri();
-
-    return codeChallenge(verifier)
-      .then((challenge) => {
-        setStored(OAUTH.verifier, verifier);
-        setStored(OAUTH.state, state);
-        setStored(OAUTH.action, action || "connect");
-        setStored(OAUTH.redirect, redirect);
-
-        const params = new URLSearchParams({
-          client_id: id,
-          redirect_uri: redirect,
-          response_type: "code",
-          scope: SCOPES.join(" "),
-          state,
-          code_challenge: challenge,
-          code_challenge_method: "S256",
-          access_type: "online",
-          include_granted_scopes: "true",
-          prompt: "consent"
-        });
-        status.message = "Waiting for Google authorization";
-        emit();
-        location.assign(AUTH_URL + "?" + params.toString());
-      })
-      .catch((err) => handleError("GOOGLE HEALTH AUTHORIZATION FAILED", err, true));
-  }
-
-  function callbackParams() {
-    const url = new URL(location.href);
-    const expected = getStored(OAUTH.state);
-    if (!expected) return null;
-    if (!url.searchParams.has("code") && !url.searchParams.has("state") && !url.searchParams.has("error")) return null;
-    return {
-      code: url.searchParams.get("code"),
-      state: url.searchParams.get("state"),
-      error: url.searchParams.get("error"),
-      description: url.searchParams.get("error_description") || "",
-      expected
-    };
-  }
-
-  function cleanCallbackUrl() {
-    try {
-      const url = new URL(location.href);
-      ["code", "state", "error", "error_description", "scope"].forEach((name) => url.searchParams.delete(name));
-      history.replaceState(null, "", url.pathname + (url.search ? url.search : "") + url.hash);
-    } catch (err) { /* file protocol or restricted history */ }
-  }
-
-  function exchangeCode(code, verifier, redirect) {
-    const body = new URLSearchParams({
-      code,
-      client_id: clientId(),
-      redirect_uri: redirect,
-      grant_type: "authorization_code",
-      code_verifier: verifier
-    });
-    return fetch(TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8", Accept: "application/json" },
-      body: body.toString()
-    }).then((response) => {
-      if (!response.ok) {
-        return response.json().catch(() => null).then((payload) => {
-          const detail = payload && (payload.error_description || payload.error) || "Google token exchange failed.";
-          const error = new Error("Google Health " + response.status + ": " + detail);
-          error.status = response.status;
-          throw error;
-        });
-      }
-      return response.json();
-    });
+  function clearToken() {
+    token = "";
+    expiresAt = 0;
+    granted = [];
+    scopeKnown = true;
+    status.authorized = false;
+    status.partial = false;
+    status.apiPartial = false;
   }
 
   function applyToken(response) {
@@ -378,6 +301,7 @@
       scopeKnown = true;
       granted = String(response.scope).split(/\s+/).filter(Boolean);
     }
+    signInError = "";
     status.apiPartial = false;
     status.authorized = true;
     status.checkedAt = Date.now();
@@ -391,65 +315,58 @@
     }
   }
 
-  function handleOAuthCallback() {
-    const params = callbackParams();
-    if (!params) return Promise.resolve();
-    cleanCallbackUrl();
-
-    if (!params.state || params.state !== params.expected) {
-      clearOAuthState();
-      handleError("GOOGLE HEALTH CONNECT FAILED", new Error("The Google authorization state did not match. Restart the connection and do not reload during it."), true);
-      return Promise.resolve();
+  function onTokenResponse(response) {
+    if (!response || response.error) {
+      const detail = response && (response.error_description || response.error) || "Google authorization was not granted.";
+      pendingAction = "";
+      handleError("GOOGLE HEALTH CONNECT FAILED", new Error(detail), true);
+      return;
     }
-    if (params.error) {
-      clearOAuthState();
-      const detail = params.description || params.error;
-      handleError("GOOGLE HEALTH CONNECT FAILED", new Error("Google authorization was not granted: " + detail), true);
-      return Promise.resolve();
+    try {
+      applyToken(response);
+    } catch (err) {
+      pendingAction = "";
+      handleError("GOOGLE HEALTH CONNECT FAILED", err, true);
+      return;
     }
-    if (!params.code) {
-      clearOAuthState();
-      handleError("GOOGLE HEALTH CONNECT FAILED", new Error("Google returned an incomplete authorization response."), true);
-      return Promise.resolve();
-    }
-
-    const verifier = getStored(OAUTH.verifier);
-    const redirect = getStored(OAUTH.redirect) || redirectUri();
-    const action = getStored(OAUTH.action) || "connect";
-    if (!verifier) {
-      clearOAuthState();
-      handleError("GOOGLE HEALTH CONNECT FAILED", new Error("The PKCE verifier was missing. Restart the connection."), true);
-      return Promise.resolve();
-    }
-
-    status.message = "Finishing Google Health authorization";
     emit();
+    const action = pendingAction || "connect";
+    pendingAction = "";
+    if (action === "sync") {
+      sync();
+    } else {
+      UI.toast("success", "GOOGLE HEALTH CONNECTED", "Google Health is authorized. Press SYNC GOOGLE HEALTH to pull your data.");
+    }
+  }
 
-    return exchangeCode(params.code, verifier, redirect)
-      .then((response) => {
-        clearOAuthState();
-        applyToken(response);
-        emit();
-        if (action === "sync") {
-          sync();
-        } else {
-          UI.toast("success", "GOOGLE HEALTH CONNECTED", "Google Health is authorized. Press SYNC GOOGLE HEALTH to pull your data.");
-        }
-      })
-      .catch((err) => {
-        clearOAuthState();
-        handleError("GOOGLE HEALTH CONNECT FAILED", err, true);
-      });
+  function requestToken(action) {
+    if (!refreshConfigured()) {
+      handleError("GOOGLE HEALTH SETUP REQUIRED", new Error("Add healthClientId to firebase-config.js before connecting Google Health."), true);
+      return false;
+    }
+    if (!ensureTokenClient()) {
+      signInError = "Google Identity Services could not load. Check your connection and reload. Live sync needs GitHub Pages or http://localhost:8080.";
+      handleError("GOOGLE HEALTH SIGN-IN UNAVAILABLE", new Error(signInError), true);
+      emit();
+      return false;
+    }
+    pendingAction = action || "connect";
+    clearToken();
+    status.message = "Waiting for Google authorization";
+    emit();
+    try {
+      tokenClient.requestAccessToken({ prompt: "consent" });
+      return true;
+    } catch (err) {
+      pendingAction = "";
+      handleError("GOOGLE HEALTH CONNECT FAILED", err, true);
+      return false;
+    }
   }
 
   function hasValidToken() {
     if (token && Date.now() < expiresAt) return true;
-    token = "";
-    expiresAt = 0;
-    granted = [];
-    scopeKnown = true;
-    status.apiPartial = false;
-    status.authorized = false;
+    clearToken();
     return false;
   }
 
@@ -771,17 +688,12 @@
   }
 
   function connect() {
-    status.configured = !!clientId();
-    status.ready = status.configured;
-    if (!status.configured) {
-      handleError("GOOGLE HEALTH SETUP REQUIRED", new Error("Add healthClientId to firebase-config.js and enable the Google Health API for that OAuth client."), true);
-      return;
-    }
+    refreshConfigured();
     if (hasValidToken()) {
       UI.toast("success", "GOOGLE HEALTH CONNECTED", "Google Health is authorized. Press SYNC GOOGLE HEALTH to pull your data.");
       return;
     }
-    startOAuth("connect").catch((err) => handleError("GOOGLE HEALTH CONNECT FAILED", err, true));
+    requestToken("connect");
   }
 
   async function sync() {
@@ -790,14 +702,9 @@
       return;
     }
     status.apiPartial = false;
-    status.configured = !!clientId();
-    status.ready = status.configured;
-    if (!status.configured) {
-      handleError("GOOGLE HEALTH SETUP REQUIRED", new Error("Add healthClientId to firebase-config.js and enable the Google Health API for that OAuth client."), true);
-      return;
-    }
+    refreshConfigured();
     if (!hasValidToken()) {
-      startOAuth("sync").catch((err) => handleError("GOOGLE HEALTH CONNECT FAILED", err, true));
+      requestToken("sync");
       return;
     }
 
@@ -823,7 +730,7 @@
   function disconnect() {
     UI.openModal({
       title: "Disconnect Google Health?",
-      body: "<p>Local ARISE data stays on this device. This browser's Google Health access is revoked; you can reconnect at any time.</p>",
+      body: "<p>Local ARISE data stays on this device. The local link is cleared and any active Google Health token is revoked; you can reconnect at any time.</p>",
       actions: [
         { label: "CANCEL" },
         {
@@ -831,23 +738,22 @@
           kind: "danger",
           onClick: () => {
             const access = token;
+            pendingAction = "";
             if (access) {
-              const body = new URLSearchParams({ token: access });
-              fetch(REVOKE_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-                body: body.toString()
-              }).catch(() => { /* revocation is best-effort */ });
+              const api = oauth2Api();
+              if (api && typeof api.revoke === "function") {
+                api.revoke(access, () => { /* revocation is best-effort */ });
+              } else {
+                const body = new URLSearchParams({ token: access });
+                fetch(REVOKE_URL, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+                  body: body.toString()
+                }).catch(() => { /* revocation is best-effort */ });
+              }
             }
-            token = "";
-            expiresAt = 0;
-            granted = [];
-            scopeKnown = true;
-            status.authorized = false;
-            status.partial = false;
-            status.apiPartial = false;
+            clearToken();
             status.message = "Google Health disconnected";
-            clearOAuthState();
             if (ctx) {
               const saved = health(ctx.getState());
               saved.lastSyncAt = null;
@@ -884,6 +790,9 @@
     if (!current.configured) {
       label = "SETUP REQUIRED";
       detail = "Add healthClientId to firebase-config.js and enable the Google Health API for that OAuth client.";
+    } else if (!current.ready) {
+      label = signInError ? "SIGN-IN UNAVAILABLE" : "LOADING SIGN-IN";
+      detail = signInError || "Waiting for Google Identity Services to load…";
     } else if (current.syncing) {
       label = "SYNCING";
       detail = "Reading Google Health rollups, daily summaries, sleep and workouts…";
@@ -904,7 +813,7 @@
       detail = "Google Health is authorized. Press SYNC GOOGLE HEALTH to refresh your archive.";
     } else if (saved.lastSyncAt) {
       label = "LINKED";
-      detail = "Authorization is session-only. Press SYNC GOOGLE HEALTH to authorize and refresh.";
+      detail = "The access token is session-only. Press SYNC GOOGLE HEALTH to authorize and refresh.";
     }
 
     if (statusEl) statusEl.textContent = label;
@@ -922,8 +831,8 @@
     if (account) account.textContent = saved.email || (current.authorized ? "GOOGLE ACCOUNT" : "NOT LINKED");
     if (last) last.textContent = D.fmtDateTime(saved.lastSyncAt ? new Date(saved.lastSyncAt).toISOString() : null);
     if (note) note.textContent = detail;
-    if (connectBtn) connectBtn.disabled = !current.configured || current.authorized;
-    if (syncBtn) syncBtn.disabled = !current.configured || current.syncing;
+    if (connectBtn) connectBtn.disabled = !current.ready || current.authorized;
+    if (syncBtn) syncBtn.disabled = !current.ready || current.syncing;
     if (disconnectBtn) disconnectBtn.hidden = !saved.lastSyncAt && !current.authorized;
   }
 
@@ -941,11 +850,19 @@
 
   function mount(options) {
     ctx = options || {};
-    status.configured = !!clientId();
-    status.ready = status.configured;
+    refreshConfigured();
     bindStatic();
     render();
-    handleOAuthCallback().catch((err) => handleError("GOOGLE HEALTH CONNECT FAILED", err, true));
+    waitForOAuth2().then((ok) => {
+      if (ok && ensureTokenClient()) {
+        signInError = "";
+        refreshConfigured();
+      } else {
+        signInError = "Google Identity Services could not load. Check your connection and reload. Live sync needs GitHub Pages or http://localhost:8080.";
+        status.ready = false;
+      }
+      emit();
+    });
   }
 
   window.SystemHealth = {

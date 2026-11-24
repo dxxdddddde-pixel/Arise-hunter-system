@@ -17,13 +17,11 @@
     // Public Google Identity Services client ID for the Sign in with Google button.
     googleClientId: "1013456010911-siqtovnrctmjods5ei50bf89qper5lv7.apps.googleusercontent.com",
 
-    // Public OAuth client used for Google Health reads. The Google Health API
-    // must be enabled for this client, and its read scopes must be on the
-    // OAuth consent screen. Falls back to googleClientId when left empty.
-    healthClientId: "1013456010911-siqtovnrctmjods5ei50bf89qper5lv7.apps.googleusercontent.com",
-
-    // Exact URI registered under "Authorized redirect URIs" for the code flow.
-    // Leave empty to use the current page URL (GitHub Pages subfolder included).
-    healthRedirectUri: ""
+    // Public Web application OAuth client used for Google Health reads via
+    // Google Identity Services. The Google Health API must be enabled for this
+    // client, its read scopes must be on the consent screen, and this site's
+    // origin must be an Authorized JavaScript origin. Falls back to
+    // googleClientId when left empty. No client secret belongs here.
+    healthClientId: "1013456010911-siqtovnrctmjods5ei50bf89qper5lv7.apps.googleusercontent.com"
   };
 })();

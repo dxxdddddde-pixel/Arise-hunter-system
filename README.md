@@ -25,7 +25,7 @@ unless you enable optional Firebase Cloud Link. **Google OAuth will not complete
 use GitHub Pages or `http://localhost:8080` for the live link.
 
 If you test locally, serve this folder on exactly port 8080 with any static file server, then visit
-`http://localhost:8080`. The redirect URI must match that URL exactly.
+`http://localhost:8080`. Register that exact JavaScript origin in the OAuth client.
 
 > **Health archive file import has been removed.** Google Health is the only live source. Backup
 > export/restore still works and is the supported way to move an ARISE snapshot between devices.
@@ -67,8 +67,8 @@ optional Firebase Cloud Link below. Live sync always needs the network.
 
 ## Google Health live sync
 
-**Data Link → Google Health Uplink** authorizes the browser directly against Google's OAuth 2.0
-Authorization Code flow with PKCE (`S256`) and CSRF `state`. No client secret or backend is used. The
+**Data Link → Google Health Uplink** uses Google Identity Services token model: Google returns a
+short-lived access token directly to the browser, with no backend, redirect URI or client secret. The
 resulting snapshot goes through `SystemData.buildLiveResult()` — the same scoring pipeline as the
 demo — so XP, quests, ranks, Training Grounds, Body Log and strength state stay consistent.
 
@@ -81,17 +81,16 @@ demo — so XP, quests, ranks, Training Grounds, Body Log and strength state sta
    - `https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly`
    - `https://www.googleapis.com/auth/googlehealth.sleep.readonly`
 3. If the app is in **Testing**, add your Google account as a **Test user**.
-4. Create or open a **Web application** OAuth client. Because this is a public browser client, use
-   Authorization Code + PKCE; do not put a client secret in this repository.
-5. Add the exact **Authorized redirect URI** for each place you run the app:
-   - `https://dxxdddddde-pixel.github.io/Arise-hunter-system/` (include the repo path and trailing slash)
-   - `http://localhost:8080/` for local testing
-6. Add the corresponding **Authorized JavaScript origins**:
+4. Create or open a **Web application** OAuth client. The token model needs the client ID only;
+   never put a client secret in this repository.
+5. Add the exact **Authorized JavaScript origins**:
    - `https://dxxdddddde-pixel.github.io` (origin only — no repo path)
-   - `http://localhost:8080`
+   - `http://localhost:8080` for local testing
+6. No **Authorized redirect URI** is needed for the Google Health token flow. Old redirect URI values
+   are ignored.
 
-Google compares redirect URIs exactly, including scheme, host, path and trailing slash. The app uses
-the current page URL by default, so the GitHub Pages URL above matches when deployed at the repo root.
+Google compares JavaScript origins exactly, including scheme and port. The repo path is not part of
+the origin, so one GitHub Pages origin covers the deployed site.
 
 ### 2. Add the client ID
 
@@ -100,14 +99,12 @@ Open `firebase-config.js` and confirm `healthClientId`:
 ```js
 window.ARISE_FIREBASE_CONFIG = {
   // ...Firebase values / googleClientId for Cloud Link...
-  healthClientId: "123456789-abc.apps.googleusercontent.com",
-  healthRedirectUri: ""
+  healthClientId: "123456789-abc.apps.googleusercontent.com"
 };
 ```
 
-`healthClientId` falls back to `googleClientId` when empty. Leave `healthRedirectUri` empty to use
-the current page URL; set it only if Google requires a different exact redirect URI. The client ID is
-public by design. Never add a client secret to a static site.
+`healthClientId` falls back to `googleClientId` when empty. The client ID is public by design. Never
+add a client secret to a static site.
 
 ### 3. Sync
 
@@ -118,9 +115,9 @@ public by design. Never add a client secret to a static site.
 3. If an archive already exists, confirm **REPLACE ARCHIVE**. Your hunter name, claimed quest XP,
    audio setting, Training Grounds protocol, Body Log, Strength Log, Cloud Link state and health-link
    metadata are preserved.
-4. Press **SYNC GOOGLE HEALTH** again for a refresh. Authorization is session-only; a new browser
-   session asks you to authorize again. The last sync time and granted-scope record stay in local
-   state.
+4. Press **SYNC GOOGLE HEALTH** again for a refresh. The access token is kept in memory only; after a
+   reload or token expiry, Google reuses your saved consent and returns a new token when you press the
+   button again. The last sync time and granted-scope record stay in local state.
 
 ### Partial consent is supported
 
@@ -156,8 +153,10 @@ data will not appear.
 ### Troubleshooting
 
 - **"SETUP REQUIRED"** — `healthClientId` is empty or still a placeholder.
-- **`redirect_uri_mismatch`** — register the exact current page URL under **Authorized redirect URIs**.
-  On GitHub Pages include `/Arise-hunter-system/` and the trailing slash.
+- **`origin_mismatch` / `invalid_client`** — use a **Web application** client and register
+  `https://dxxdddddde-pixel.github.io` under **Authorized JavaScript origins**. No repo path.
+- **`client_secret is missing`** — an old code-flow build is cached. Reload to pick up `v14`; this
+  version never calls the token endpoint and never uses a secret.
 - **403 / permission error** — enable the Google Health API, add the scopes to the consent screen,
   and add your account as a test user while the app is in testing.
 - **401 / "authorization expired"** — press **SYNC GOOGLE HEALTH** to authorize again.
@@ -166,6 +165,8 @@ data will not appear.
 - **"PARTIAL HEALTH LINK"** — some grants are missing. Reconnect and approve the missing scopes.
 - **"NO GOOGLE HEALTH DATA"** — the account has no supported records in the last 40 days, or the
   source app has not written them into Google Health yet.
+- **"SIGN-IN UNAVAILABLE"** — the Google Identity Services script could not load; check your
+  connection and reload.
 - **OAuth does nothing from `file://`** — deploy to GitHub Pages or serve on `http://localhost:8080`.
 
 ---
@@ -199,8 +200,7 @@ window.ARISE_FIREBASE_CONFIG = {
   projectId: "your-project",
   appId: "1:123456789:web:abcdef",
   googleClientId: "123456789-abc.apps.googleusercontent.com",
-  healthClientId: "123456789-abc.apps.googleusercontent.com",
-  healthRedirectUri: ""
+  healthClientId: "123456789-abc.apps.googleusercontent.com"
 };
 ```
 
@@ -416,10 +416,10 @@ respects `prefers-reduced-motion` for particles and animations.
 
 ## Privacy
 
-- Google Health is read directly by your browser with an access token that is kept for the current
-  session only; no token or client secret is stored in this repository.
-- The OAuth `state` and PKCE verifier are kept in `sessionStorage` only while a connection is being
-  completed.
+- Google Health is read directly by your browser with an access token that is kept in memory for the
+  current session only; no token, authorization code or client secret is stored in this repository.
+- Google Identity Services handles consent in a popup and returns the granted scopes with the token.
+  Nothing is written to `sessionStorage` for the Health link.
 - Health data is processed locally. It is never uploaded to ARISE and is not uploaded to Firebase
   unless you enable **Cloud Link** and sign in.
 - Without Cloud Link, data lives only in this browser profile's `localStorage`.
@@ -438,7 +438,8 @@ respects `prefers-reduced-motion` for particles and animations.
 | Symptom | Fix |
 | --- | --- |
 | OAuth never returns from `file://` | Use GitHub Pages or `http://localhost:8080` |
-| `redirect_uri_mismatch` | Register the exact current page URL as an Authorized redirect URI |
+| `origin_mismatch` / `invalid_client` | Register the site origin as an Authorized JavaScript origin |
+| `client_secret is missing` | Reload for `v14`; the old code-flow build is cached |
 | "SETUP REQUIRED" | Add `healthClientId` (or `googleClientId`) in `firebase-config.js` |
 | 403 / permission error | Enable the Google Health API, add the read scopes, and add the account as a test user |
 | `ACCOUNT_NOT_LINKED` | Link the Google account inside the Google Health / Fitbit app first |
@@ -467,7 +468,7 @@ js/ui.js            renderers and view components
 js/training.js      weekly plan builder, set ledger, 1RM, overload, charts, PRs
 js/body.js          biometric checkpoints, calculated steps, monthly strength peaks
 js/cloud.js         Google sign-in, automatic Firebase snapshot sync, restore
-js/health.js        Google Health PKCE OAuth + REST mapping into the live snapshot pipeline
+js/health.js        Google Health GIS token flow + REST mapping into the live snapshot pipeline
 js/app.js           boot, event wiring, backup export/restore, Google Health sync
 assets/fonts/       self-hosted fonts
 assets/icons/       PWA + Apple touch icons
