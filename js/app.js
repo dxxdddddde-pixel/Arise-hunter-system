@@ -196,30 +196,36 @@
   }
 
   /* Apply a live snapshot from Google Health through the shared import pipeline. */
-  function applyLiveSnapshot(snapshot) {
+  function applyLiveSnapshot(snapshot, options) {
+    const opts = options || {};
+    const auto = opts.auto === true;
     let result;
     try {
       result = D.buildLiveResult(snapshot);
     } catch (err) {
       console.error("ARISE live snapshot failed", err);
-      UI.toast("error", "SNAPSHOT FAILED", err && err.message ? err.message : "The live source returned an unreadable snapshot.");
+      if (!auto) UI.toast("error", "SNAPSHOT FAILED", err && err.message ? err.message : "The live source returned an unreadable snapshot.");
       return false;
     }
     if (!Object.keys(result.days).length && !result.workouts.length) {
-      UI.toast("warn", "NO NEW DATA", "Google Health has no records for the requested window yet.");
+      if (!auto) UI.toast("warn", "NO NEW DATA", "Google Health has no records for the requested window yet.");
       return false;
     }
-    if (Object.keys(state.days).length > 0) {
+    if (!auto && Object.keys(state.days).length > 0) {
       askReplace(result, (incoming) => commitResult(incoming, false, true));
       return false;
     }
-    return commitResult(result, false, true);
+    return commitResult(result, false, true, { silent: auto });
   }
 
-  function levelUpIfNeeded(before, sourceText) {
+  function levelUpIfNeeded(before, sourceText, quiet) {
     const info = D.levelInfo(D.totalXp(state));
     if (info.level <= before) return false;
     const newShadows = D.SHADOWS.filter((s) => s.level > before && s.level <= info.level);
+    if (quiet) {
+      UI.addLog(state, "good", "Level up — LV. " + info.level + " " + info.rank.name + " reached" + (sourceText ? " via " + sourceText : "") + ".");
+      return true;
+    }
     setTimeout(() => {
       UI.showLevelUp(info, newShadows);
       sfx.fanfare();
@@ -256,25 +262,27 @@
     });
   }
 
-  function commitResult(result, demo, live) {
+  function commitResult(result, demo, live, options) {
+    const opts = options || {};
+    const silent = opts.silent === true;
     const before = D.levelInfo(D.totalXp(state)).level;
     state = D.applyImport(state, result);
-    persist();
+    persist(silent ? "health-auto-sync" : undefined);
     UI.render(state);
-    UI.setView("status");
+    if (!silent) UI.setView("status");
     const summary = summarize(result);
     const source = String(result.meta.source || "Health archive");
     const label = demo ? "SIMULATION LOADED" : live ? source.toUpperCase() + " SYNCED" : "ARCHIVE SYNCED";
-    UI.toast("success", label, summary.text + (demo ? " · demo data" : ""));
+    if (!silent) UI.toast("success", label, summary.text + (demo ? " · demo data" : ""));
     UI.addLog(
       state,
       "good",
-      (demo ? "Demo archive loaded" : live ? source + " live sync" : source + " archive synced") +
+      (demo ? "Demo archive loaded" : silent ? source + " auto-sync" : live ? source + " live sync" : source + " archive synced") +
         ": " + result.meta.days + " days, " + result.meta.workouts + " gates, " + result.meta.records + " records."
     );
     if (live && H && typeof H.markSynced === "function") H.markSynced(state.cloud && state.cloud.email);
-    sfx.confirm();
-    levelUpIfNeeded(before, demo ? "simulation" : live ? source : "sync");
+    if (!silent) sfx.confirm();
+    levelUpIfNeeded(before, silent ? "auto-sync" : demo ? "simulation" : live ? source : "sync", silent);
     return true;
   }
 

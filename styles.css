@@ -1036,6 +1036,7 @@ a { color: var(--cyan); }
 .health-panel { padding-bottom: 18px; }
 .health-actions .btn:disabled { opacity: 0.38; cursor: not-allowed; }
 .health-actions .btn[hidden] { display: none; }
+.health-actions #healthAutoBtn.is-active { border-color: rgba(84, 255, 193, 0.45); color: var(--green); box-shadow: inset 0 0 0 1px rgba(84, 255, 193, 0.12); }
 .archive-panel { padding-bottom: 20px; }
 
 .import-status {
@@ -1074,6 +1075,7 @@ a { color: var(--cyan); }
 .link-detail:last-of-type { border-bottom: 0; }
 .link-detail span { color: var(--muted); }
 .link-detail strong { color: var(--text-dim); text-align: right; font-weight: 400; }
+.link-detail strong.is-paused { color: var(--gold); }
 .signal-bars { display: flex; align-items: flex-end; gap: 3px; height: 24px; margin-top: 10px; }
 .signal-bars i { flex: 1; background: rgba(87, 230, 255, 0.14); height: 30%; }
 .signal-bars i:nth-child(2) { height: 45%; }

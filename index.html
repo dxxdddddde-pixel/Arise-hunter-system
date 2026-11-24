@@ -15,7 +15,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="assets/fonts.css" />
-  <link rel="stylesheet" href="styles.css?v=14" />
+  <link rel="stylesheet" href="styles.css?v=15" />
 </head>
 <body data-rank="E">
   <canvas id="fx" aria-hidden="true"></canvas>
@@ -754,11 +754,20 @@
                   <span>LAST SYNC</span>
                   <strong id="healthLastSyncText">NEVER</strong>
                 </div>
+                <div class="link-detail">
+                  <span>AUTO-SYNC</span>
+                  <strong id="healthAutoSyncText">OFF</strong>
+                </div>
+                <div class="link-detail">
+                  <span>NEXT SYNC</span>
+                  <strong id="healthNextSyncText">—</strong>
+                </div>
 
                 <p class="cloud-note" id="healthNote">Authorize Google Health, then sync the last 40 days of available data.</p>
                 <div class="link-actions health-actions">
                   <button class="btn btn-primary btn-sm" id="healthConnectBtn" type="button">CONNECT GOOGLE HEALTH</button>
                   <button class="btn btn-ghost btn-sm" id="healthSyncBtn" type="button">SYNC GOOGLE HEALTH</button>
+                  <button class="btn btn-ghost btn-sm" id="healthAutoBtn" type="button" aria-pressed="false">ENABLE AUTO-SYNC</button>
                   <button class="btn btn-danger btn-sm" id="healthDisconnectBtn" type="button" hidden>DISCONNECT</button>
                 </div>
               </article>
@@ -803,6 +812,13 @@
                     <div>
                       <h4>Partial consent is supported</h4>
                       <p>Grant any subset of Activity, Sleep and Health Metrics. Granted metrics populate normally; the rest stay blank until you grant their scopes.</p>
+                    </div>
+                  </div>
+                  <div class="method">
+                    <span class="method-num">04</span>
+                    <div>
+                      <h4>Optional auto-sync</h4>
+                      <p>Enable <em>AUTO-SYNC</em> to refresh the archive every 15 minutes while this tab is open. It pauses when the session token expires and never opens consent by itself.</p>
                     </div>
                   </div>
                 </div>
@@ -1111,13 +1127,13 @@
   <input type="file" id="backupInput" accept=".json,application/json" hidden />
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="firebase-config.js?v=14"></script>
-  <script src="js/data.js?v=14"></script>
-  <script src="js/ui.js?v=14"></script>
-  <script src="js/training.js?v=14"></script>
-  <script src="js/body.js?v=14"></script>
-  <script src="js/cloud.js?v=14"></script>
-  <script src="js/health.js?v=14"></script>
-  <script src="js/app.js?v=14"></script>
+  <script src="firebase-config.js?v=15"></script>
+  <script src="js/data.js?v=15"></script>
+  <script src="js/ui.js?v=15"></script>
+  <script src="js/training.js?v=15"></script>
+  <script src="js/body.js?v=15"></script>
+  <script src="js/cloud.js?v=15"></script>
+  <script src="js/health.js?v=15"></script>
+  <script src="js/app.js?v=15"></script>
 </body>
 </html>

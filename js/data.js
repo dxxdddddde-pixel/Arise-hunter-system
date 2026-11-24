@@ -203,7 +203,8 @@
         lastSyncAt: null,
         lastError: null,
         email: null,
-        scopes: []
+        scopes: [],
+        autoSync: false
       },
       cloud: {
         uid: null,
@@ -232,7 +233,10 @@
         const saved = s.health && typeof s.health === "object"
           ? s.health
           : s.fit && typeof s.fit === "object" ? s.fit : null;
-        return saved ? { ...base.health, ...saved, scopes: Array.isArray(saved.scopes) ? saved.scopes : [] } : base.health;
+        const merged = saved ? { ...base.health, ...saved } : { ...base.health };
+        merged.scopes = Array.isArray(merged.scopes) ? merged.scopes : [];
+        merged.autoSync = merged.autoSync === true;
+        return merged;
       })(),
       cloud: s.cloud && typeof s.cloud === "object" ? { ...base.cloud, ...s.cloud } : base.cloud,
       days: s.days && typeof s.days === "object" ? s.days : {},

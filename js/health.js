@@ -28,6 +28,8 @@
   };
 
   const GIS_TIMEOUT = 10000;
+  const AUTO_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+  const AUTO_TICK_MS = 30000;
 
   const WINDOW_DAYS = 40;
   const SHORT_WINDOW_DAYS = 14;
@@ -51,6 +53,13 @@
     message: "",
     checkedAt: 0
   };
+
+  let autoTimer = 0;
+  let autoNextAt = 0;
+  let autoPaused = "";
+  let visibilityBound = false;
+  let lastSnapshotSignature = "";
+  let lastAutoError = "";
 
   /* ---------------------------------------------------------
      helpers
@@ -130,9 +139,10 @@
 
   function health(state) {
     if (!state.health || typeof state.health !== "object") {
-      state.health = { lastSyncAt: null, lastError: null, email: null, scopes: [] };
+      state.health = { lastSyncAt: null, lastError: null, email: null, scopes: [], autoSync: false };
     }
     if (!Array.isArray(state.health.scopes)) state.health.scopes = [];
+    if (typeof state.health.autoSync !== "boolean") state.health.autoSync = false;
     return state.health;
   }
 
@@ -158,6 +168,104 @@
     return SCOPES.filter((scope) => !scopeGranted(scope));
   }
 
+  function autoEnabled() {
+    if (!ctx || typeof ctx.getState !== "function") return false;
+    return health(ctx.getState()).autoSync === true;
+  }
+
+  function formatCountdown(ms) {
+    const total = Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
+    const min = Math.floor(total / 60);
+    const sec = total % 60;
+    return String(min).padStart(2, "0") + ":" + String(sec).padStart(2, "0");
+  }
+
+  function snapshotHasData(snapshot) {
+    if (!snapshot || typeof snapshot !== "object") return false;
+    return Object.keys(snapshot.days && typeof snapshot.days === "object" ? snapshot.days : {}).length > 0
+      || (Array.isArray(snapshot.workouts) && snapshot.workouts.length > 0);
+  }
+
+  /* In-memory only: an unchanged snapshot updates the sync time without churning the archive. */
+  function snapshotSignature(snapshot) {
+    const days = snapshot && snapshot.days && typeof snapshot.days === "object" ? snapshot.days : {};
+    const dayRows = Object.keys(days).sort().map((key) => {
+      const row = days[key] || {};
+      return [key, Object.keys(row).sort().map((metric) => [metric, Number(row[metric]) || 0])];
+    });
+    const workouts = (snapshot && Array.isArray(snapshot.workouts) ? snapshot.workouts : [])
+      .map((w) => [
+        String((w && (w.rawName || w.name)) || ""),
+        String((w && w.start) || ""),
+        String((w && w.end) || ""),
+        Number(w && w.duration) || 0,
+        Number(w && w.energy) || 0,
+        String((w && w.source) || "")
+      ])
+      .sort((a, b) => a[1].localeCompare(b[1]) || a[0].localeCompare(b[0]));
+    return JSON.stringify({ days: dayRows, workouts });
+  }
+
+  function stopAutoTimer() {
+    if (autoTimer) clearInterval(autoTimer);
+    autoTimer = 0;
+  }
+
+  function pauseAuto(reason, notify) {
+    const changed = autoPaused !== (reason || "");
+    autoPaused = reason || "";
+    stopAutoTimer();
+    autoNextAt = 0;
+    if (changed && notify && autoPaused) {
+      UI.toast("warn", "AUTO-SYNC PAUSED", autoPaused === "TOKEN EXPIRED"
+        ? "Press SYNC GOOGLE HEALTH to renew the session. Auto-sync resumes after a successful sync."
+        : "Reconnect Google Health to resume automatic syncing.");
+    }
+    emit();
+  }
+
+  function resumeAuto(reset) {
+    if (!autoEnabled()) {
+      stopAutoTimer();
+      autoPaused = "";
+      autoNextAt = 0;
+      return;
+    }
+    if (!hasValidToken()) {
+      pauseAuto("SIGN IN REQUIRED", false);
+      return;
+    }
+    if (reset || !autoNextAt || autoNextAt <= Date.now()) {
+      autoNextAt = Date.now() + AUTO_SYNC_INTERVAL_MS;
+    }
+    autoPaused = "";
+    if (!autoTimer) autoTimer = setInterval(tickAutoSync, AUTO_TICK_MS);
+    emit();
+  }
+
+  function tickAutoSync() {
+    if (!autoEnabled()) {
+      stopAutoTimer();
+      autoPaused = "";
+      autoNextAt = 0;
+      emit();
+      return;
+    }
+    if (document.hidden === true || status.syncing) return;
+    if (!hasValidToken()) {
+      pauseAuto("TOKEN EXPIRED", true);
+      return;
+    }
+    if (Date.now() >= autoNextAt) {
+      autoNextAt = Date.now() + AUTO_SYNC_INTERVAL_MS;
+      autoPaused = "";
+      sync({ auto: true });
+      return;
+    }
+    if (autoPaused) autoPaused = "";
+    emit();
+  }
+
   function publicStatus() {
     const saved = ctx && ctx.getState ? health(ctx.getState()) : {};
     const authorized = !!token && Date.now() < expiresAt;
@@ -175,7 +283,11 @@
       message: status.message || "",
       lastError: saved.lastError || "",
       lastSyncAt: saved.lastSyncAt || null,
-      email: saved.email || null
+      email: saved.email || null,
+      autoSync: !!saved.autoSync,
+      autoSyncIntervalMs: AUTO_SYNC_INTERVAL_MS,
+      autoSyncPaused: autoPaused,
+      nextSyncAt: autoNextAt || 0
     };
   }
 
@@ -218,6 +330,21 @@
       });
     }
     return text;
+  }
+
+  /* Auto-sync never opens a modal; repeated failures are logged without repeated toasts. */
+  function handleAutoError(err) {
+    const text = friendlyError(err);
+    console.error("ARISE Google Health auto-sync failed", err);
+    if (ctx) {
+      const saved = health(ctx.getState());
+      saved.lastError = text;
+      ctx.persist("health-auto-error");
+    }
+    status.message = "Auto-sync failed · " + text;
+    if (text !== lastAutoError) UI.toast("error", "AUTO-SYNC FAILED", text);
+    lastAutoError = text;
+    if (err && err.status === 401) pauseAuto("TOKEN EXPIRED", true);
   }
 
   /* ---------------------------------------------------------
@@ -319,6 +446,7 @@
     if (!response || response.error) {
       const detail = response && (response.error_description || response.error) || "Google authorization was not granted.";
       pendingAction = "";
+      if (autoEnabled()) pauseAuto("CONNECT FAILED", false);
       handleError("GOOGLE HEALTH CONNECT FAILED", new Error(detail), true);
       return;
     }
@@ -326,9 +454,12 @@
       applyToken(response);
     } catch (err) {
       pendingAction = "";
+      if (autoEnabled()) pauseAuto("CONNECT FAILED", false);
       handleError("GOOGLE HEALTH CONNECT FAILED", err, true);
       return;
     }
+    lastAutoError = "";
+    if (autoEnabled()) resumeAuto(true);
     emit();
     const action = pendingAction || "connect";
     pendingAction = "";
@@ -352,6 +483,7 @@
     }
     pendingAction = action || "connect";
     clearToken();
+    if (autoEnabled()) pauseAuto("AUTHORIZING", false);
     status.message = "Waiting for Google authorization";
     emit();
     try {
@@ -675,15 +807,15 @@
   /* ---------------------------------------------------------
      public actions
      --------------------------------------------------------- */
-  function markSynced(email) {
+  function markSynced(email, message) {
     if (!ctx) return;
     const saved = health(ctx.getState());
     saved.lastSyncAt = new Date().toISOString();
     if (email) saved.email = email;
     saved.lastError = null;
     saved.scopes = granted.slice();
-    ctx.persist();
-    status.message = status.partial ? "Google Health synced · partial data" : "Google Health synced";
+    ctx.persist("health-synced");
+    status.message = message || (status.partial ? "Google Health synced · partial data" : "Google Health synced");
     emit();
   }
 
@@ -696,35 +828,96 @@
     requestToken("connect");
   }
 
-  async function sync() {
+  async function sync(options) {
+    const auto = !!(options && options.auto);
     if (status.syncing) {
-      UI.toast("warn", "SYNC IN PROGRESS", "Wait for the current Google Health sync to finish.");
-      return;
+      if (!auto) UI.toast("warn", "SYNC IN PROGRESS", "Wait for the current Google Health sync to finish.");
+      return false;
     }
     status.apiPartial = false;
     refreshConfigured();
     if (!hasValidToken()) {
-      requestToken("sync");
-      return;
+      if (auto) pauseAuto("TOKEN EXPIRED", true);
+      else requestToken("sync");
+      return false;
     }
 
     status.syncing = true;
-    status.message = "Reading Google Health data";
+    status.message = auto ? "Reading Google Health data · auto-sync" : "Reading Google Health data";
     emit();
     try {
       const snapshot = await loadSnapshot();
+      const hasData = snapshotHasData(snapshot);
+      const signature = hasData ? snapshotSignature(snapshot) : "";
+
+      if (auto && signature && signature === lastSnapshotSignature) {
+        lastAutoError = "";
+        if (ctx && typeof ctx.getState === "function") {
+          UI.addLog(ctx.getState(), "good", "Google Health auto-sync: no changes detected.");
+        }
+        markSynced(null, "Google Health auto-synced · no changes");
+        if (autoEnabled()) resumeAuto(true);
+        return true;
+      }
+      if (hasData) lastSnapshotSignature = signature;
+
       const applied = ctx && typeof ctx.applySnapshot === "function"
-        ? ctx.applySnapshot(snapshot)
+        ? ctx.applySnapshot(snapshot, { auto })
         : false;
+      if (applied || auto) lastAutoError = "";
       status.message = applied
-        ? (status.partial ? "Google Health synced · partial data" : "Google Health synced")
+        ? (auto ? "Google Health auto-synced" : status.partial ? "Google Health synced · partial data" : "Google Health synced")
         : "Review the replacement prompt to finish syncing";
+      if (autoEnabled()) resumeAuto(true);
+      return applied;
     } catch (err) {
-      handleError("GOOGLE HEALTH SYNC FAILED", err, true);
+      if (auto) handleAutoError(err);
+      else handleError("GOOGLE HEALTH SYNC FAILED", err, true);
+      return false;
     } finally {
       status.syncing = false;
       emit();
     }
+  }
+
+  function toggleAutoSync() {
+    if (!ctx || typeof ctx.getState !== "function") return;
+    const saved = health(ctx.getState());
+
+    if (saved.autoSync) {
+      saved.autoSync = false;
+      stopAutoTimer();
+      autoPaused = "";
+      autoNextAt = 0;
+      ctx.persist("health-auto-disabled");
+      status.message = "Google Health auto-sync disabled";
+      emit();
+      UI.toast("warn", "AUTO-SYNC OFF", "Google Health will only refresh when you press SYNC GOOGLE HEALTH.");
+      return;
+    }
+
+    UI.openModal({
+      title: "Enable Google Health Auto-Sync?",
+      body: "<p>ARISE will check Google Health every <strong>15 minutes</strong> while this tab is open. Each refresh silently replaces the health archive; your hunter identity, claimed XP, Training Grounds, Body Log, Strength Log, Cloud Link and link settings are preserved.</p>" +
+        "<p>Auto-sync never opens Google consent by itself. If the session token expires, it pauses until you press <strong>SYNC GOOGLE HEALTH</strong>. Nothing syncs while the app is closed.</p>",
+      actions: [
+        { label: "CANCEL" },
+        {
+          label: "ENABLE AUTO-SYNC",
+          kind: "primary",
+          onClick: () => {
+            const current = health(ctx.getState());
+            current.autoSync = true;
+            ctx.persist("health-auto-enabled");
+            status.message = "Google Health auto-sync enabled";
+            UI.toast("success", "AUTO-SYNC ON", "ARISE will refresh Google Health every 15 minutes while this tab is open.");
+            if (hasValidToken()) resumeAuto(true);
+            else pauseAuto("SIGN IN REQUIRED", false);
+            emit();
+          }
+        }
+      ]
+    });
   }
 
   function disconnect() {
@@ -753,6 +946,7 @@
               }
             }
             clearToken();
+            pauseAuto("DISCONNECTED", false);
             status.message = "Google Health disconnected";
             if (ctx) {
               const saved = health(ctx.getState());
@@ -784,6 +978,9 @@
     const connectBtn = $("#healthConnectBtn");
     const syncBtn = $("#healthSyncBtn");
     const disconnectBtn = $("#healthDisconnectBtn");
+    const autoText = $("#healthAutoSyncText");
+    const nextText = $("#healthNextSyncText");
+    const autoBtn = $("#healthAutoBtn");
 
     let label = "READY";
     let detail = "Authorize Google Health, then sync the last 40 days of available data.";
@@ -810,10 +1007,14 @@
       detail = (reasons.length ? reasons.join(". ") + ". " : "") + "Unavailable metrics stay blank.";
     } else if (current.authorized) {
       label = "CONNECTED";
-      detail = "Google Health is authorized. Press SYNC GOOGLE HEALTH to refresh your archive.";
+      detail = current.autoSync
+        ? "Google Health is authorized. Auto-sync refreshes every 15 minutes while this tab is open."
+        : "Google Health is authorized. Press SYNC GOOGLE HEALTH to refresh your archive.";
     } else if (saved.lastSyncAt) {
       label = "LINKED";
-      detail = "The access token is session-only. Press SYNC GOOGLE HEALTH to authorize and refresh.";
+      detail = current.autoSync && current.autoSyncPaused
+        ? "Auto-sync paused: " + current.autoSyncPaused + ". Press SYNC GOOGLE HEALTH to renew the session and resume."
+        : "The access token is session-only. Press SYNC GOOGLE HEALTH to authorize and refresh.";
     }
 
     if (statusEl) statusEl.textContent = label;
@@ -834,12 +1035,28 @@
     if (connectBtn) connectBtn.disabled = !current.ready || current.authorized;
     if (syncBtn) syncBtn.disabled = !current.ready || current.syncing;
     if (disconnectBtn) disconnectBtn.hidden = !saved.lastSyncAt && !current.authorized;
+    if (autoText) {
+      autoText.textContent = !current.autoSync ? "OFF"
+        : current.autoSyncPaused ? "ON · " + current.autoSyncPaused : "ON · EVERY 15 MIN";
+      autoText.classList.toggle("is-paused", !!current.autoSync && !!current.autoSyncPaused);
+    }
+    if (nextText) {
+      nextText.textContent = !current.autoSync ? "—"
+        : current.autoSyncPaused ? current.autoSyncPaused
+        : current.nextSyncAt ? "IN " + formatCountdown(current.nextSyncAt - Date.now()) : "PENDING";
+    }
+    if (autoBtn) {
+      autoBtn.textContent = current.autoSync ? "DISABLE AUTO-SYNC" : "ENABLE AUTO-SYNC";
+      autoBtn.classList.toggle("is-active", current.autoSync);
+      autoBtn.setAttribute("aria-pressed", current.autoSync ? "true" : "false");
+    }
   }
 
   function bindStatic() {
     const map = {
       "#healthConnectBtn": connect,
       "#healthSyncBtn": () => { sync(); },
+      "#healthAutoBtn": toggleAutoSync,
       "#healthDisconnectBtn": disconnect
     };
     Object.keys(map).forEach((selector) => {
@@ -853,6 +1070,23 @@
     refreshConfigured();
     bindStatic();
     render();
+
+    if (!visibilityBound) {
+      visibilityBound = true;
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden !== true && autoEnabled()) tickAutoSync();
+      });
+    }
+
+    if (autoEnabled()) {
+      if (hasValidToken()) resumeAuto(false);
+      else pauseAuto("SIGN IN REQUIRED", false);
+    } else {
+      stopAutoTimer();
+      autoPaused = "";
+      autoNextAt = 0;
+    }
+
     waitForOAuth2().then((ok) => {
       if (ok && ensureTokenClient()) {
         signInError = "";
@@ -867,10 +1101,12 @@
 
   window.SystemHealth = {
     SCOPES,
+    AUTO_SYNC_INTERVAL_MS,
     mount,
     connect,
     sync,
     disconnect,
+    toggleAutoSync,
     markSynced,
     render,
     status: publicStatus,
