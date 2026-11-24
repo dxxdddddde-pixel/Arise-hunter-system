@@ -251,11 +251,11 @@
   }
 
   function revisionsRef() {
-    return db.collection("users/" + user.uid + "/snapshots/revisions");
+    return db.collection("users/" + user.uid + "/snapshots");
   }
 
   function revisionRef(id) {
-    return db.doc("users/" + user.uid + "/snapshots/revisions/" + id);
+    return db.doc("users/" + user.uid + "/snapshots/" + id);
   }
 
   function chunksRef(id) {

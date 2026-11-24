@@ -119,6 +119,17 @@ service cloud.firestore {
 }
 ```
 
+This covers the exact paths the app writes:
+
+```text
+users/<uid>/meta/cloud
+users/<uid>/snapshots/<revisionId>
+users/<uid>/snapshots/<revisionId>/chunks/<chunkIndex>
+```
+
+If you prefer narrower rules, keep one `allow read, write: if request.auth != null && request.auth.uid == uid;`
+rule for each of those three paths.
+
 ### 4. Use it
 
 - Open **Data Link → Cloud Link** and use the **Sign in with Google** button. It returns an ID token
@@ -126,8 +137,8 @@ service cloud.firestore {
   If the Google library cannot load, the app falls back to the standard Firebase redirect.
 - After changes, the archive uploads automatically about **15 seconds** after the last edit.
 - **SYNC NOW**, **UPLOAD TO CLOUD** and **DOWNLOAD FROM CLOUD** are available for manual control.
-- Snapshots are split into Firestore document chunks and stored under
-  `users/<uid>/snapshots/revisions/`. The newest 10 revisions are kept.
+- Snapshots are split into Firestore document chunks and stored under `users/<uid>/snapshots/<revision>/`.
+  The newest 10 revisions are kept.
 - If this device has unsynced edits and the cloud is newer, the System asks which version to keep —
   it never overwrites silently.
 
