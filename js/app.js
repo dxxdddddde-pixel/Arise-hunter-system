@@ -548,6 +548,16 @@
      --------------------------------------------------------- */
   function bindEvents() {
     document.addEventListener("click", (e) => {
+      if (e.target.closest("#mobileMore")) {
+        UI.toggleMobileSheet();
+        sfx.tick();
+        return;
+      }
+      if (e.target.closest("#mobileSheetClose") || e.target.closest("#mobileSheetScrim")) {
+        UI.closeMobileSheet();
+        return;
+      }
+
       const viewBtn = e.target.closest("[data-view]");
       if (viewBtn && VIEWS.indexOf(viewBtn.dataset.view) !== -1) {
         UI.setView(viewBtn.dataset.view);
@@ -690,6 +700,7 @@
       if (e.key === "Escape") {
         if ($("#modal").classList.contains("is-open")) UI.closeModal();
         else if ($("#levelup").classList.contains("is-open")) UI.hideLevelUp();
+        else if ($("#mobileSheet").classList.contains("is-open")) UI.closeMobileSheet();
         return;
       }
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;

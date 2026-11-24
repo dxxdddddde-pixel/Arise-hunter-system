@@ -55,6 +55,8 @@ for home-screen installation and offline caching.
 3. Choose **Add to Home Screen**.
 4. Rename it if you want, then tap **Add**.
 5. Launch **ARISE** from the home screen. It opens full-screen without Safari's address bar.
+6. Use the fixed bottom command deck to switch sections. Tap **MORE** for Quests, Shadow Army and
+   Data Link.
 
 The first visit needs an internet connection so the app shell can be cached. After that, `sw.js`
 serves the dashboard offline. Data is stored per device in Safari's site data unless you enable the

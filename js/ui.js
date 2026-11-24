@@ -169,12 +169,11 @@
         : "The Monarch ceiling is yours. Continue to compound power.";
     }
 
-    const badge = $("#questBadge");
-    if (badge) {
-      const left = Math.max(0, dash.quests.dailyAvailable - dash.quests.dailyDone);
+    const left = Math.max(0, dash.quests.dailyAvailable - dash.quests.dailyDone);
+    $$(".quest-badge").forEach((badge) => {
       badge.textContent = String(left);
       badge.style.display = left > 0 ? "" : "none";
-    }
+    });
 
     const statCode = $("#statCode");
     if (statCode) statCode.textContent = "SYS-" + rank.key + String(lvl.level).padStart(2, "0");
@@ -583,12 +582,35 @@
   }
 
   /* ---------------------------------------------------------
+     mobile command deck
+     --------------------------------------------------------- */
+  function toggleMobileSheet(force) {
+    const sheet = $("#mobileSheet");
+    const scrim = $("#mobileSheetScrim");
+    const more = $("#mobileMore");
+    if (!sheet || !scrim) return;
+    const open = typeof force === "boolean" ? force : !sheet.classList.contains("is-open");
+    sheet.classList.toggle("is-open", open);
+    sheet.setAttribute("aria-hidden", open ? "false" : "true");
+    scrim.hidden = !open;
+    if (more) more.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function closeMobileSheet() {
+    toggleMobileSheet(false);
+  }
+
+  /* ---------------------------------------------------------
      views
      --------------------------------------------------------- */
   function setView(view) {
     if (!view) return;
     currentView = view;
     $$(".nav-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.view === view));
+    $$(".dock-btn[data-view], .sheet-link[data-view]").forEach((b) => b.classList.toggle("is-active", b.dataset.view === view));
+    const dockMore = $("#mobileMore");
+    if (dockMore) dockMore.classList.toggle("is-active", ["quests", "army", "link"].indexOf(view) !== -1);
+    closeMobileSheet();
     $$(".view").forEach((v) => v.classList.toggle("is-active", v.id === "view-" + view));
     if (location.hash !== "#" + view) {
       try { history.replaceState(null, "", "#" + view); } catch (err) { /* file protocol */ }
@@ -703,6 +725,8 @@
     renderClock,
     setView,
     getView,
+    toggleMobileSheet,
+    closeMobileSheet,
     setGateFilter,
     toast,
     working,

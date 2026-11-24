@@ -128,7 +128,7 @@
               </svg>
             </span>
             <span class="nav-text"><strong>Quests</strong><small>Daily directives</small></span>
-            <span class="nav-badge" id="questBadge">0</span>
+            <span class="nav-badge quest-badge" id="questBadge">0</span>
             <span class="nav-glow"></span>
           </button>
           <button class="nav-btn" data-view="training">
@@ -958,6 +958,99 @@
       </aside>
     </div>
   </div>
+
+  <!-- MOBILE COMMAND DECK -->
+  <nav class="mobile-dock" id="mobileDock" aria-label="Mobile command deck">
+    <div class="dock-inner">
+      <button class="dock-btn is-active" data-view="status" aria-label="Status">
+        <span class="dock-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+        </span>
+        <span class="dock-label">STATUS</span>
+      </button>
+
+      <button class="dock-btn" data-view="gates" aria-label="Gates">
+        <span class="dock-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M4 21V9l8-6 8 6v12"/><path d="M9 21v-7h6v7"/><path d="M12 3v3"/>
+          </svg>
+        </span>
+        <span class="dock-label">GATES</span>
+      </button>
+
+      <button class="dock-btn dock-core" data-view="training" aria-label="Training Grounds">
+        <span class="dock-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <path d="M4 9v6M7 7v10M17 7v10M20 9v6M7 12h10"/>
+            <path d="M3 10h2M19 10h2M3 14h2M19 14h2"/>
+          </svg>
+        </span>
+        <span class="dock-label">TRAIN</span>
+      </button>
+
+      <button class="dock-btn" data-view="body" aria-label="Body Log">
+        <span class="dock-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M3 8h18M3 16h18M7 5v14M17 5v14"/><path d="M9.5 12h5"/>
+          </svg>
+        </span>
+        <span class="dock-label">BODY</span>
+      </button>
+
+      <button class="dock-btn dock-more" id="mobileMore" aria-label="More sections" aria-controls="mobileSheet" aria-expanded="false">
+        <span class="dock-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="6" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="18" cy="12" r="1.8"/>
+          </svg>
+        </span>
+        <span class="dock-label">MORE</span>
+        <span class="dock-badge quest-badge">0</span>
+      </button>
+    </div>
+  </nav>
+
+  <div class="sheet-scrim" id="mobileSheetScrim" hidden></div>
+
+  <aside class="mobile-sheet" id="mobileSheet" aria-hidden="true" aria-label="More sections">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div>
+        <p class="eyebrow">SYSTEM MODULES</p>
+        <h3>Additional Gates</h3>
+      </div>
+      <button class="sheet-close" id="mobileSheetClose" aria-label="Close additional sections">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="sheet-links">
+      <button class="sheet-link" data-view="quests">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z"/><path d="m9 9 2 2 4-4"/>
+        </svg>
+        <strong>QUESTS</strong>
+        <small>daily directives</small>
+      </button>
+      <button class="sheet-link" data-view="army">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/>
+          <path d="M16 5.5a3 3 0 0 1 0 5.8"/><path d="M17.5 14.5c2 .8 3.5 2.8 3.5 5.5"/>
+        </svg>
+        <strong>SHADOWS</strong>
+        <small>summoned allies</small>
+      </button>
+      <button class="sheet-link" data-view="link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="7" y="2.5" width="10" height="19" rx="3"/><path d="M10.5 5.5h3"/>
+          <path d="M9 18.5h.01"/><path d="M12 9v3l2 1.5"/>
+        </svg>
+        <strong>DATA LINK</strong>
+        <small>sync & backup</small>
+      </button>
+    </div>
+  </aside>
 
   <!-- LEVEL UP -->
   <div class="overlay levelup-overlay" id="levelup" aria-hidden="true">
