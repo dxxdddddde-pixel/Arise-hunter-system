@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#04060d" />
+  <meta name="description" content="ARISE — a Solo Leveling inspired health system for your Apple Watch data." />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ARISE" />
+  <meta name="format-detection" content="telephone=no" />
+  <title>ARISE // Hunter System</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
+  <link rel="stylesheet" href="assets/fonts.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-rank="E">
+  <canvas id="fx" aria-hidden="true"></canvas>
+  <div class="scanlines" aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <!-- BOOT SEQUENCE -->
+  <div class="boot" id="boot" aria-hidden="true">
+    <div class="boot-inner">
+      <div class="boot-sigil">
+        <span></span><span></span><span></span>
+      </div>
+      <p class="boot-title">S Y S T E M</p>
+      <div class="boot-log" id="bootLog"></div>
+      <div class="boot-bar"><i id="bootBar"></i></div>
+    </div>
+  </div>
+
+  <div class="app-shell" id="app">
+    <header class="topbar">
+      <button class="brand" data-view="status" aria-label="Open status window">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 40 40" fill="none">
+            <path d="M20 3 36 20 20 37 4 20 20 3Z" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M20 10 29 20 20 30 11 20 20 10Z" fill="currentColor" opacity=".18"/>
+            <path d="M20 15 24.5 20 20 25 15.5 20 20 15Z" fill="currentColor"/>
+          </svg>
+        </span>
+        <span class="brand-text">
+          <strong>ARISE</strong>
+          <small>HUNTER INTERFACE</small>
+        </span>
+      </button>
+
+      <div class="topbar-mid">
+        <span class="link-state" id="linkState">
+          <span class="pulse-dot" id="linkDot"></span>
+          <span id="linkLabel">SIGNAL LOST</span>
+        </span>
+        <span class="topbar-divider"></span>
+        <span class="top-clock" id="topDate">--</span>
+      </div>
+
+      <div class="topbar-actions">
+        <button class="icon-btn" id="soundToggle" title="Toggle system audio" aria-label="Toggle system audio">
+          <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 8.5a5 5 0 0 1 0 7"/><path d="M18.5 6a8.5 8.5 0 0 1 0 12"/>
+          </svg>
+          <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="m16 9 5 5m0-5-5 5"/>
+          </svg>
+        </button>
+        <button class="btn btn-ghost" id="syncBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="M12 3v10m0 0 4-4m-4 4-4-4"/><path d="M4 15v3a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-3"/>
+          </svg>
+          IMPORT
+        </button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="hunter-card">
+          <div class="rank-seal" id="rankSeal">
+            <span id="rankLetter">E</span>
+            <i></i>
+          </div>
+          <div class="hunter-id">
+            <p class="eyebrow">DESIGNATED HUNTER</p>
+            <h2 id="hunterName">SUNG JIN-WOO</h2>
+            <button class="link-btn" id="editName">EDIT IDENTIFIER</button>
+          </div>
+          <div class="level-row">
+            <span>LV.</span>
+            <strong id="levelNum">1</strong>
+            <span class="rank-label" id="rankName">E-RANK</span>
+          </div>
+          <div class="xp-bar" aria-hidden="true"><span id="xpFill"></span></div>
+          <div class="xp-meta">
+            <span id="xpText">0 / 400 XP</span>
+            <span id="xpPercent">0%</span>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="Primary">
+          <button class="nav-btn is-active" data-view="status">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+                <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+              </svg>
+            </span>
+            <span class="nav-text"><strong>Status</strong><small>Hunter vitals</small></span>
+            <span class="nav-glow"></span>
+          </button>
+          <button class="nav-btn" data-view="gates">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M4 21V9l8-6 8 6v12"/><path d="M9 21v-7h6v7"/><path d="M12 3v3"/>
+              </svg>
+            </span>
+            <span class="nav-text"><strong>Gates</strong><small>Cleared dungeons</small></span>
+            <span class="nav-glow"></span>
+          </button>
+          <button class="nav-btn" data-view="quests">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z"/><path d="m9 9 2 2 4-4"/>
+              </svg>
+            </span>
+            <span class="nav-text"><strong>Quests</strong><small>Daily directives</small></span>
+            <span class="nav-badge" id="questBadge">0</span>
+            <span class="nav-glow"></span>
+          </button>
+          <button class="nav-btn" data-view="training">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M4 9v6M7 7v10M17 7v10M20 9v6M7 12h10"/>
+                <path d="M3 10h2M19 10h2M3 14h2M19 14h2"/>
+              </svg>
+            </span>
+            <span class="nav-text"><strong>Training Grounds</strong><small>100× time chamber</small></span>
+            <span class="nav-glow"></span>
+          </button>
+          <button class="nav-btn" data-view="body">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 8h18M3 16h18M7 5v14M17 5v14"/>
+                <path d="M9.5 12h5"/>
+              </svg>
+            </span>
+            <span class="nav-text"><strong>Body Log</strong><small>biometric records</small></span>
+            <span class="nav-glow"></span>
+          </button>
+          <button class="nav-btn" data-view="army">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/>
+                <path d="M16 5.5a3 3 0 0 1 0 5.8"/><path d="M17.5 14.5c2 .8 3.5 2.8 3.5 5.5"/>
+              </svg>
+            </span>
+            <span class="nav-text"><strong>Shadow Army</strong><small>Summoned allies</small></span>
+            <span class="nav-glow"></span>
+          </button>
+          <button class="nav-btn" data-view="link">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="7" y="2.5" width="10" height="19" rx="3"/><path d="M10.5 5.5h3"/>
+                <path d="M9 18.5h.01"/><path d="M12 9v3l2 1.5"/>
+              </svg>
+            </span>
+            <span class="nav-text"><strong>Link</strong><small>Apple Watch sync</small></span>
+            <span class="nav-glow"></span>
+          </button>
+        </nav>
+
+        <div class="sidebar-foot">
+          <div class="mini-stat"><span>STREAK</span><strong id="streakVal">0</strong><small>days</small></div>
+          <div class="mini-stat"><span>TOTAL XP</span><strong id="totalXpVal">0</strong><small>xp</small></div>
+        </div>
+      </aside>
+
+      <main class="main" id="main">
+        <!-- STATUS -->
+        <section class="view is-active" id="view-status" aria-labelledby="statusTitle">
+          <div class="view-head">
+            <div>
+              <p class="eyebrow">STATUS WINDOW <span class="eyebrow-dot"></span> <span id="statusDate">--</span></p>
+              <h1 id="statusTitle">Hunter Status</h1>
+            </div>
+            <button class="sync-chip" id="syncChip" data-view="link">
+              <span class="sync-chip-dot"></span>
+              <span id="syncChipText">AWAITING SYNC</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m9 6 6 6-6 6"/></svg>
+            </button>
+          </div>
+
+          <div class="empty-banner" id="emptyBanner">
+            <div class="empty-copy">
+              <p class="eyebrow">NO SIGNAL DETECTED</p>
+              <h3>The System awaits your first sync.</h3>
+              <p>Import an Apple Health archive to awaken your status window, or load a simulated hunter archive to preview the interface.</p>
+            </div>
+            <div class="empty-actions">
+              <button class="btn btn-primary" id="emptySync">SYNC APPLE WATCH</button>
+              <button class="btn btn-ghost" id="emptyDemo">LOAD DEMO</button>
+            </div>
+          </div>
+
+          <div class="score-grid">
+            <article class="score-card" data-tone="vitality" id="cardRecovery">
+              <div class="score-top">
+                <span class="eyebrow">RECOVERY</span>
+                <span class="score-tag" id="recoveryTag">NO DATA</span>
+              </div>
+              <div class="score-main">
+                <div class="ring">
+                  <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <circle class="ring-track" cx="60" cy="60" r="52"/>
+                    <circle class="ring-value" id="recoveryRing" cx="60" cy="60" r="52"/>
+                  </svg>
+                  <div class="ring-label"><strong id="recoveryVal">--</strong><span>/ 100</span></div>
+                </div>
+                <p class="score-desc" id="recoveryDesc">Sync your Apple Watch to calculate recovery from HRV, resting heart rate and sleep.</p>
+              </div>
+              <div class="spark" id="recoverySpark"></div>
+            </article>
+
+            <article class="score-card" data-tone="strain" id="cardStrain">
+              <div class="score-top">
+                <span class="eyebrow">STRAIN</span>
+                <span class="score-tag" id="strainTag">NO DATA</span>
+              </div>
+              <div class="score-main">
+                <div class="ring">
+                  <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <circle class="ring-track" cx="60" cy="60" r="52"/>
+                    <circle class="ring-value" id="strainRing" cx="60" cy="60" r="52"/>
+                  </svg>
+                  <div class="ring-label"><strong id="strainVal">--</strong><span>/ 21</span></div>
+                </div>
+                <p class="score-desc" id="strainDesc">Daily cardiovascular load from active energy, exercise minutes and gate activity.</p>
+              </div>
+              <div class="spark" id="strainSpark"></div>
+            </article>
+
+            <article class="score-card" data-tone="sleep" id="cardSleep">
+              <div class="score-top">
+                <span class="eyebrow">SLEEP</span>
+                <span class="score-tag" id="sleepTag">NO DATA</span>
+              </div>
+              <div class="score-main">
+                <div class="ring">
+                  <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <circle class="ring-track" cx="60" cy="60" r="52"/>
+                    <circle class="ring-value" id="sleepRing" cx="60" cy="60" r="52"/>
+                  </svg>
+                  <div class="ring-label"><strong id="sleepVal">--</strong><span>/ 100</span></div>
+                </div>
+                <p class="score-desc" id="sleepDesc">Sleep debt, duration and stage balance from your watch's overnight readings.</p>
+              </div>
+              <div class="spark" id="sleepSpark"></div>
+            </article>
+          </div>
+
+          <div class="grid-2">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">ATTRIBUTES</p>
+                  <h3>Hunter Stats</h3>
+                </div>
+                <span class="panel-code" id="statCode">SYS-01</span>
+              </div>
+              <div class="stats-layout">
+                <div class="radar-wrap" id="statRadar" aria-label="Attribute radar chart"></div>
+                <div class="stat-bars" id="statBars"></div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">VITALS</p>
+                  <h3>Body Telemetry</h3>
+                </div>
+                <span class="panel-code" id="vitalsDate">--</span>
+              </div>
+              <div class="vitals" id="vitals">
+                <div class="vital" data-metric="hrv"><span class="vital-name">HRV</span><div class="vital-bar"><i></i></div><strong>--</strong></div>
+                <div class="vital" data-metric="rhr"><span class="vital-name">RESTING HR</span><div class="vital-bar"><i></i></div><strong>--</strong></div>
+                <div class="vital" data-metric="sleep"><span class="vital-name">SLEEP</span><div class="vital-bar"><i></i></div><strong>--</strong></div>
+                <div class="vital" data-metric="energy"><span class="vital-name">ACTIVE ENERGY</span><div class="vital-bar"><i></i></div><strong>--</strong></div>
+                <div class="vital" data-metric="steps"><span class="vital-name">STEPS</span><div class="vital-bar"><i></i></div><strong>--</strong></div>
+                <div class="vital" data-metric="exercise"><span class="vital-name">EXERCISE</span><div class="vital-bar"><i></i></div><strong>--</strong></div>
+                <div class="vital" data-metric="resp"><span class="vital-name">RESPIRATORY</span><div class="vital-bar"><i></i></div><strong>--</strong></div>
+                <div class="vital" data-metric="vo2"><span class="vital-name">VO2 MAX</span><div class="vital-bar"><i></i></div><strong>--</strong></div>
+              </div>
+            </article>
+          </div>
+
+          <div class="grid-2">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">ACTIVITY MATRIX</p>
+                  <h3>35-Day Movement Log</h3>
+                </div>
+                <div class="heat-legend"><span>LOW</span><i></i><i></i><i></i><i></i><i></i><span>HIGH</span></div>
+              </div>
+              <div class="heatmap" id="heatmap"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">SYSTEM ANALYSIS</p>
+                  <h3>Directives</h3>
+                </div>
+                <span class="panel-code">AI-02</span>
+              </div>
+              <div class="insights" id="insights"></div>
+              <div class="recent-gates" id="recentGates"></div>
+            </article>
+          </div>
+        </section>
+
+        <!-- GATES -->
+        <section class="view" id="view-gates" aria-labelledby="gatesTitle">
+          <div class="view-head">
+            <div>
+              <p class="eyebrow">DUNGEON RECORDS</p>
+              <h1 id="gatesTitle">Gate Log</h1>
+            </div>
+            <div class="segmented" id="gateFilters">
+              <button class="is-active" data-filter="week">7 DAYS</button>
+              <button data-filter="month">30 DAYS</button>
+              <button data-filter="all">ALL</button>
+            </div>
+          </div>
+
+          <div class="tile-grid">
+            <article class="tile">
+              <p class="eyebrow">GATES CLEARED</p>
+              <strong id="gatesCleared">0</strong>
+              <span>in selected window</span>
+            </article>
+            <article class="tile">
+              <p class="eyebrow">TOTAL LOAD</p>
+              <strong id="gatesLoad">0</strong>
+              <span>strain accumulated</span>
+            </article>
+            <article class="tile">
+              <p class="eyebrow">HIGHEST RANK</p>
+              <strong id="gatesRank">--</strong>
+              <span>gate classification</span>
+            </article>
+            <article class="tile">
+              <p class="eyebrow">TIME IN GATES</p>
+              <strong id="gatesTime">0h</strong>
+              <span>combat duration</span>
+            </article>
+          </div>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">CLEARANCE LOG</p>
+                <h3>Workouts as Gates</h3>
+              </div>
+              <span class="panel-code" id="gateCount">0 RECORDS</span>
+            </div>
+            <div class="gate-list" id="gateList"></div>
+          </article>
+        </section>
+
+        <!-- QUESTS -->
+        <section class="view" id="view-quests" aria-labelledby="questsTitle">
+          <div class="view-head">
+            <div>
+              <p class="eyebrow">SYSTEM DIRECTIVES</p>
+              <h1 id="questsTitle">Quests</h1>
+            </div>
+            <div class="streak-chip">
+              <span class="streak-flame">▲</span>
+              <span><strong id="questStreak">0</strong> DAY STREAK</span>
+            </div>
+          </div>
+
+          <div class="quest-layout">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">RESETS AT MIDNIGHT</p>
+                  <h3>Daily Quests</h3>
+                </div>
+                <span class="panel-code" id="dailyProgress">0 / 0</span>
+              </div>
+              <div class="quest-list" id="dailyQuests"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">7-DAY CYCLE</p>
+                  <h3>Weekly Trials</h3>
+                </div>
+                <span class="panel-code" id="weeklyProgress">0 / 0</span>
+              </div>
+              <div class="quest-list" id="weeklyQuests"></div>
+            </article>
+          </div>
+
+          <article class="panel reward-panel">
+            <div class="reward-copy">
+              <p class="eyebrow">PENALTY ZONE</p>
+              <h3>Failure to complete daily quests incurs no penalty here — only stagnation.</h3>
+              <p>Completed directives can be claimed for bonus experience. Quest rewards are added on top of the XP generated by your watch data.</p>
+            </div>
+            <div class="reward-total">
+              <span>CLAIMED</span>
+              <strong id="questClaimedXp">0</strong>
+              <small>BONUS XP</small>
+            </div>
+          </article>
+        </section>
+
+        <!-- TRAINING GROUNDS -->
+        <section class="view" id="view-training" aria-labelledby="trainingTitle">
+          <div class="view-head">
+            <div>
+              <p class="eyebrow">DEMON CASTLE <span class="eyebrow-dot"></span> 100× TIME CHAMBER</p>
+              <h1 id="trainingTitle">Training Grounds</h1>
+            </div>
+            <div class="training-head-actions">
+              <span class="sync-chip is-static" id="trainingWeekChip">
+                <span class="sync-chip-dot"></span>
+                <span id="trainingWeekLabel">WEEK 01 // PLAN IDLE</span>
+              </span>
+              <button class="btn btn-ghost btn-sm" id="seedTrainingBtn">LOAD SAMPLE DATA</button>
+            </div>
+          </div>
+
+          <div class="tile-grid training-tiles">
+            <article class="tile tile-accent">
+              <p class="eyebrow">WEEKLY VOLUME</p>
+              <strong id="trainVolume">0</strong>
+              <span>KG LIFTED · LAST 7 DAYS</span>
+            </article>
+            <article class="tile">
+              <p class="eyebrow">PEAK 1RM</p>
+              <strong id="train1rm">--</strong>
+              <span>KG · EPLEY ESTIMATE</span>
+            </article>
+            <article class="tile">
+              <p class="eyebrow">PERSONAL RECORDS</p>
+              <strong id="trainPrCount">0</strong>
+              <span>FEATS ON RECORD</span>
+            </article>
+            <article class="tile">
+              <p class="eyebrow">OVERLOAD</p>
+              <strong id="trainOverload">--</strong>
+              <span>LIFTS TRENDING UP</span>
+            </article>
+          </div>
+
+          <article class="panel today-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">DAILY DIRECTIVE <span class="eyebrow-dot"></span> <span id="todayDateLabel">--</span></p>
+                <h3>Today's Workout</h3>
+              </div>
+              <span class="panel-code" id="todayCode">--</span>
+            </div>
+            <div class="today-summary">
+              <div class="today-stat"><span>DRILLS</span><strong id="todayExCount">0</strong></div>
+              <div class="today-stat"><span>SETS</span><strong id="todaySetsDone">0 / 0</strong></div>
+              <div class="today-stat"><span>VOLUME</span><strong id="todayVolume">0 KG</strong></div>
+              <div class="today-stat"><span>STATUS</span><strong id="todayStatus">AWAITING</strong></div>
+            </div>
+            <div class="today-progress"><i id="todayProgressFill"></i></div>
+            <div class="today-auto" id="todayAuto"></div>
+            <div class="today-list" id="todayList"></div>
+            <div class="today-log-title">TODAY'S SET LOG <span id="todayLogCount">0 SETS</span></div>
+            <div class="today-log" id="todayLog"></div>
+            <div class="today-actions">
+              <button class="btn btn-ghost btn-sm" id="todayOpenPlanBtn">OPEN THIS DAY IN PLAN</button>
+              <button class="btn btn-primary btn-sm" id="todayLogBtn">+ LOG A SET</button>
+            </div>
+            <p class="panel-note">The System reads your local weekday and serves the matching day from the active plan week. Logged sets are stamped with today's date automatically.</p>
+          </article>
+
+          <div class="training-layout">
+            <article class="panel plan-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">SYSTEMATIZED PROTOCOL</p>
+                  <h3>Weekly Workout Plan</h3>
+                </div>
+                <span class="panel-code" id="planCode">W1 · 0 EX</span>
+              </div>
+              <div class="plan-toolbar">
+                <div class="week-nav">
+                  <button class="icon-btn btn-mini" id="planPrev" aria-label="Previous week">‹</button>
+                  <span id="planWeekLabel">WEEK 01</span>
+                  <button class="icon-btn btn-mini" id="planNext" aria-label="Next week">›</button>
+                </div>
+                <div class="plan-toolbar-actions">
+                  <button class="btn btn-ghost btn-sm" id="planRenameBtn">RENAME</button>
+                  <button class="btn btn-ghost btn-sm" id="planCopyBtn">COPY DAY</button>
+                  <button class="btn btn-ghost btn-sm" id="planAddWeekBtn">+ WEEK</button>
+                  <button class="btn btn-primary btn-sm" id="planAddBtn">+ EXERCISE</button>
+                </div>
+              </div>
+              <div class="day-tabs" id="planDays" role="tablist" aria-label="Training day"></div>
+              <div class="plan-day" id="planDay"></div>
+              <div class="plan-foot">
+                <button class="link-btn" id="planClearBtn">CLEAR THIS DAY</button>
+                <button class="link-btn" id="planDelWeekBtn">DELETE WEEK</button>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">THE SYSTEM DEMANDS MORE</p>
+                  <h3>Progressive Overload</h3>
+                </div>
+                <span class="panel-code" id="overloadCode">0 SIGNALS</span>
+              </div>
+              <div class="overload-list" id="overloadList"></div>
+              <p class="panel-note">Double progression: hit every prescribed rep, then add weight next session. Stalled lifts get one deload before the System pushes again.</p>
+            </article>
+          </div>
+
+          <div class="grid-2">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">LIMIT BREAKERS</p>
+                  <h3>Estimated 1RM</h3>
+                </div>
+                <span class="panel-code">EPLEY / 30</span>
+              </div>
+              <div class="onerm-grid" id="onermGrid"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">HALL OF FEATS</p>
+                  <h3>Personal Records</h3>
+                </div>
+                <span class="panel-code" id="prCode">0 RECORDS</span>
+              </div>
+              <div class="pr-list" id="prList"></div>
+            </article>
+          </div>
+
+          <div class="grid-2">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">LIFT TRAJECTORY</p>
+                  <h3>Exercise Progress</h3>
+                </div>
+                <span class="panel-code" id="progressCode">NO DATA</span>
+              </div>
+              <div class="segmented chart-tabs" id="progressTabs"></div>
+              <div class="line-chart" id="progressChart"></div>
+              <div class="chart-caption" id="progressCaption"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">LOAD ACCUMULATION</p>
+                  <h3>Weekly Volume</h3>
+                </div>
+                <span class="panel-code">LAST 8 WEEKS</span>
+              </div>
+              <div class="volume-legend">
+                <span><i style="background:#57e6ff"></i>PUSH</span>
+                <span><i style="background:#8a6bff"></i>PULL</span>
+                <span><i style="background:#ff9a5c"></i>LEGS</span>
+                <span><i style="background:#54ffc1"></i>CORE</span>
+              </div>
+              <div class="bar-chart" id="volumeChart"></div>
+              <div class="chart-caption" id="volumeCaption"></div>
+            </article>
+          </div>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">SET LEDGER</p>
+                <h3>Logged Sets</h3>
+              </div>
+              <div class="panel-head-actions">
+                <span class="panel-code" id="ledgerCode">0 SETS</span>
+                <button class="btn btn-primary btn-sm" id="logSetBtn">+ LOG A SET</button>
+                <button class="btn btn-ghost btn-sm" id="clearLogsBtn">CLEAR LEDGER</button>
+              </div>
+            </div>
+            <div class="ledger-list" id="ledgerList"></div>
+            <p class="panel-note">Apple Health records gate duration and energy — not individual sets. Log sets here to unlock 1RM, volume, overload and personal records.</p>
+          </article>
+        </section>
+
+        <!-- BODY LOG -->
+        <section class="view" id="view-body" aria-labelledby="bodyTitle">
+          <div class="view-head">
+            <div>
+              <p class="eyebrow">VITAL RECORDS <span class="eyebrow-dot"></span> 14-DAY CHECKPOINT</p>
+              <h1 id="bodyTitle">Body Log</h1>
+            </div>
+            <span class="sync-chip is-static" id="bodyCheckpointChip">
+              <span class="sync-chip-dot"></span>
+              <span id="bodyCheckpointLabel">CHECKPOINT DUE</span>
+            </span>
+          </div>
+
+          <div class="tile-grid body-tiles">
+            <article class="tile tile-accent">
+              <p class="eyebrow">BODY WEIGHT</p>
+              <strong id="bodyWeightNow">--</strong>
+              <span id="bodyWeightDelta">KG · AWAITING LOG</span>
+            </article>
+            <article class="tile">
+              <p class="eyebrow">WAIST</p>
+              <strong id="bodyWaistNow">--</strong>
+              <span id="bodyWaistDelta">CM · AWAITING LOG</span>
+            </article>
+            <article class="tile">
+              <p class="eyebrow">AVG STEPS</p>
+              <strong id="bodyStepsNow">--</strong>
+              <span>DAILY · LAST 14 DAYS</span>
+            </article>
+            <article class="tile">
+              <p class="eyebrow">CHECKPOINTS</p>
+              <strong id="bodyEntryCount">0</strong>
+              <span>LOGGED RECORDS</span>
+            </article>
+          </div>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">BIOMETRIC CHECKPOINT</p>
+                <h3>Body Metrics</h3>
+              </div>
+              <div class="panel-head-actions">
+                <span class="panel-code" id="bodyLogCode">0 RECORDS</span>
+                <button class="btn btn-primary btn-sm" id="bodyLogBtn">+ LOG CHECKPOINT</button>
+              </div>
+            </div>
+            <div class="body-reminder-bar">
+              <span class="sync-chip is-static" id="bodyReminderChip">
+                <span class="sync-chip-dot"></span>
+                <span id="bodyReminderLabel">REMINDERS ON</span>
+              </span>
+              <span class="body-reminder-next" id="bodyReminderNext">CHECKPOINT DUE · ALERT EVERY 2H</span>
+              <span class="panel-head-actions body-reminder-actions">
+                <button class="btn btn-ghost btn-sm" id="bodyNotifyBtn">ENABLE ALERTS</button>
+                <button class="btn btn-ghost btn-sm" id="bodyTestReminderBtn">TEST ALERT</button>
+                <button class="btn btn-ghost btn-sm" id="bodyReminderToggle">PAUSE</button>
+              </span>
+            </div>
+            <div class="body-chart" id="bodyChart"></div>
+            <div class="chart-caption" id="bodyCaption"></div>
+            <div class="body-checkpoint-list" id="bodyCheckpointList"></div>
+            <p class="panel-note">Log weight and waist once every 14 days. Average steps are read from your imported Apple Watch data for the 14 days ending on the checkpoint date.</p>
+          </article>
+
+          <article class="panel strength-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">MONTHLY PEAK</p>
+                <h3>Strength Log</h3>
+              </div>
+              <div class="panel-head-actions">
+                <span class="panel-code" id="strengthCode">0 RECORDS</span>
+                <button class="btn btn-primary btn-sm" id="strengthLogBtn">+ ADD MANUAL PEAK</button>
+              </div>
+            </div>
+            <div class="strength-toolbar">
+              <div class="month-nav">
+                <button class="icon-btn btn-mini" id="strengthPrev" aria-label="Previous month">‹</button>
+                <span id="strengthMonthLabel">--</span>
+                <button class="icon-btn btn-mini" id="strengthNext" aria-label="Next month">›</button>
+              </div>
+              <select class="modal-input ex-browse" id="strengthExercise" aria-label="Exercise for monthly progress"></select>
+            </div>
+            <div class="strength-layout">
+              <div class="strength-chart" id="strengthChart"></div>
+              <div class="strength-records" id="strengthRecords"></div>
+            </div>
+            <div class="chart-caption" id="strengthCaption"></div>
+            <p class="panel-note">Monthly peaks are calculated automatically from the Training Grounds set ledger — the heaviest set, or longest hold, for each exercise and month. Add a manual peak only for lifts that are not in the ledger.</p>
+          </article>
+        </section>
+
+        <!-- ARMY -->
+        <section class="view" id="view-army" aria-labelledby="armyTitle">
+          <div class="view-head">
+            <div>
+              <p class="eyebrow">THE MONARCH'S LEGION</p>
+              <h1 id="armyTitle">Shadow Army</h1>
+            </div>
+            <span class="sync-chip is-static">
+              <span class="sync-chip-dot"></span>
+              <span id="armyCount">0 / 18 SUMMONED</span>
+            </span>
+          </div>
+          <div class="army-grid" id="armyGrid"></div>
+          <p class="footnote">Eighteen shadows are bound across eighteen level milestones, from LV. 5 to LV. 96. Each ally answers a harder trial than the last.</p>
+        </section>
+
+        <!-- LINK -->
+        <section class="view" id="view-link" aria-labelledby="linkTitle">
+          <div class="view-head">
+            <div>
+              <p class="eyebrow">APPLE WATCH UPLINK</p>
+              <h1 id="linkTitle">Data Link</h1>
+            </div>
+            <span class="sync-chip is-static" id="linkChip">
+              <span class="sync-chip-dot"></span>
+              <span id="linkChipText">AWAITING SYNC</span>
+            </span>
+          </div>
+
+          <div class="link-grid">
+            <article class="panel connect-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">SECURE INGESTION</p>
+                  <h3>Sync Apple Health</h3>
+                </div>
+                <span class="panel-code">LINK-01</span>
+              </div>
+
+              <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop health export or click to choose file">
+                <div class="drop-sigil" aria-hidden="true">
+                  <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.2">
+                    <path d="M32 6 56 20v24L32 58 8 44V20L32 6Z"/>
+                    <path d="M32 16v20m0 0 8-8m-8 8-8-8" opacity=".9"/>
+                    <circle cx="32" cy="6" r="2" fill="currentColor"/>
+                    <circle cx="56" cy="20" r="2" fill="currentColor"/>
+                    <circle cx="56" cy="44" r="2" fill="currentColor"/>
+                    <circle cx="32" cy="58" r="2" fill="currentColor"/>
+                    <circle cx="8" cy="44" r="2" fill="currentColor"/>
+                    <circle cx="8" cy="20" r="2" fill="currentColor"/>
+                  </svg>
+                </div>
+                <p class="drop-title">DROP HEALTH ARCHIVE</p>
+                <p class="drop-sub">Apple Health <span>export.xml</span> · <span>export.zip</span> · Health Auto Export <span>.json</span></p>
+                <div class="drop-actions">
+                  <button class="btn btn-primary" id="pickFile" type="button">CHOOSE FILE</button>
+                  <button class="btn btn-ghost" id="demoBtn" type="button">LOAD DEMO ARCHIVE</button>
+                </div>
+                <p class="drop-privacy">Processed locally in your browser. Nothing is uploaded.</p>
+              </div>
+
+              <div class="import-status" id="importStatus">
+                <div class="import-status-mark" aria-hidden="true">!</div>
+                <div>
+                  <strong>NO ARCHIVE DETECTED</strong>
+                  <p>Import at least one day of Apple Watch data to initialize scores, stats and quests.</p>
+                </div>
+              </div>
+
+              <div class="methods">
+                <div class="method">
+                  <span class="method-num">01</span>
+                  <div>
+                    <h4>Apple Health export</h4>
+                    <p>On iPhone: Health app → profile picture → <em>Export All Health Data</em> → share the .zip to this device. Drop the zip here.</p>
+                  </div>
+                </div>
+                <div class="method">
+                  <span class="method-num">02</span>
+                  <div>
+                    <h4>Health Auto Export</h4>
+                    <p>In the Health Auto Export app, create an export of health metrics + workouts as JSON, then share the file here.</p>
+                  </div>
+                </div>
+                <div class="method">
+                  <span class="method-num">03</span>
+                  <div>
+                    <h4>Keep it fresh</h4>
+                    <p>Re-import whenever you want to update. Each import replaces the archive and recalculates every score.</p>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <div class="link-side">
+              <article class="panel cloud-panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="eyebrow">FIREBASE UPLINK</p>
+                    <h3>Cloud Link</h3>
+                  </div>
+                  <span class="sync-chip is-static" id="cloudChip">
+                    <span class="sync-chip-dot"></span>
+                    <span id="cloudStatusText">SETUP REQUIRED</span>
+                  </span>
+                </div>
+                <div class="link-detail">
+                  <span>ACCOUNT</span>
+                  <strong id="cloudUser">NOT LINKED</strong>
+                </div>
+                <div class="link-detail">
+                  <span>LAST SYNC</span>
+                  <strong id="cloudLastSync">NEVER</strong>
+                </div>
+                <div class="link-detail">
+                  <span>QUEUE</span>
+                  <strong id="cloudPending">—</strong>
+                </div>
+                <p class="cloud-note" id="cloudNote">Add your Firebase web config to firebase-config.js, then reload.</p>
+                <div class="link-actions cloud-actions">
+                  <button class="btn btn-primary btn-sm" id="cloudSignIn">SIGN IN WITH GOOGLE</button>
+                  <button class="btn btn-ghost btn-sm" id="cloudSyncNow">SYNC NOW</button>
+                  <button class="btn btn-ghost btn-sm" id="cloudDownload">DOWNLOAD FROM CLOUD</button>
+                  <button class="btn btn-ghost btn-sm" id="cloudUpload">UPLOAD TO CLOUD</button>
+                  <button class="btn btn-danger btn-sm" id="cloudSignOut" hidden>SIGN OUT</button>
+                </div>
+              </article>
+
+              <article class="panel install-panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="eyebrow">iPHONE // SAFARI</p>
+                    <h3>Add to Home Screen</h3>
+                  </div>
+                  <span class="panel-code">PWA</span>
+                </div>
+                <div class="methods">
+                  <div class="method">
+                    <span class="method-num">01</span>
+                    <div>
+                      <h4>Push to GitHub</h4>
+                      <p>Upload this folder to a GitHub repository, then open <strong>Settings → Pages</strong> and deploy from <strong>main / root</strong>.</p>
+                    </div>
+                  </div>
+                  <div class="method">
+                    <span class="method-num">02</span>
+                    <div>
+                      <h4>Open in Safari</h4>
+                      <p>Visit <code>https://&lt;username&gt;.github.io/&lt;repo&gt;/</code> on your iPhone in <strong>Safari</strong>. The first load needs internet; then it works offline.</p>
+                    </div>
+                  </div>
+                  <div class="method">
+                    <span class="method-num">03</span>
+                    <div>
+                      <h4>Install</h4>
+                      <p>Tap <strong>Share → Add to Home Screen → Add</strong>. Launch ARISE from the new icon — it opens full-screen like an app.</p>
+                    </div>
+                  </div>
+                  <div class="method">
+                    <span class="method-num">04</span>
+                    <div>
+                      <h4>Move your data</h4>
+                      <p>Sign in with Google in <strong>Cloud Link</strong> to sync automatically, or use <strong>Export Backup</strong> and <strong>Import Backup</strong> for a one-time transfer.</p>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="eyebrow">CONNECTION STATE</p>
+                    <h3>Uplink</h3>
+                  </div>
+                  <span class="panel-code">SIG</span>
+                </div>
+                <div class="link-detail">
+                  <span>STATUS</span>
+                  <strong id="linkStatusText">STANDBY</strong>
+                </div>
+                <div class="link-detail">
+                  <span>LAST SYNC</span>
+                  <strong id="lastSyncText">NEVER</strong>
+                </div>
+                <div class="link-detail">
+                  <span>SOURCE</span>
+                  <strong id="linkSourceText">—</strong>
+                </div>
+                <div class="link-detail">
+                  <span>ARCHIVE</span>
+                  <strong id="archiveRange">—</strong>
+                </div>
+                <div class="signal-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+              </article>
+
+              <article class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="eyebrow">DETECTED</p>
+                    <h3>Metrics Found</h3>
+                  </div>
+                </div>
+                <div class="metric-chips" id="detectedMetrics"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="eyebrow">ARCHIVE HISTORY</p>
+                    <h3>Imports</h3>
+                  </div>
+                </div>
+                <div class="import-history" id="importHistory"></div>
+                <div class="link-actions">
+                  <button class="btn btn-ghost btn-sm" id="exportData">EXPORT BACKUP</button>
+                  <button class="btn btn-ghost btn-sm" id="importBackup">IMPORT BACKUP</button>
+                  <button class="btn btn-danger btn-sm" id="clearData">PURGE DATA</button>
+                </div>
+              </article>
+
+              <article class="panel note-panel">
+                <p class="eyebrow">TECHNICAL NOTE</p>
+                <p>Apple does not allow websites to read HealthKit directly. This System consumes the official Apple Health export or a Health Auto Export file — the same watch data, routed through your control.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <aside class="rightbar">
+        <article class="panel log-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">SYSTEM FEED</p>
+              <h3>Log</h3>
+            </div>
+            <span class="live-pill"><i></i>LIVE</span>
+          </div>
+          <div class="log-list" id="systemLog"></div>
+        </article>
+
+        <article class="panel quick-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">TODAY</p>
+              <h3>Directives</h3>
+            </div>
+            <span class="panel-code" id="questMiniCount">0 / 0</span>
+          </div>
+          <div class="mini-quests" id="miniQuests"></div>
+          <div class="next-rank">
+            <div class="next-rank-head"><span>NEXT EVOLUTION</span><strong id="nextRankName">D</strong></div>
+            <div class="meter"><i id="rankFill"></i></div>
+            <p id="nextRankText">Reach the next rank to expand your shadow army.</p>
+          </div>
+        </article>
+      </aside>
+    </div>
+  </div>
+
+  <!-- LEVEL UP -->
+  <div class="overlay levelup-overlay" id="levelup" aria-hidden="true">
+    <div class="levelup-card">
+      <div class="levelup-rings" aria-hidden="true"><i></i><i></i><i></i></div>
+      <p class="eyebrow">SYSTEM NOTIFICATION</p>
+      <h2>LEVEL UP</h2>
+      <div class="levelup-level"><span>LV.</span><strong id="luLevel">2</strong></div>
+      <p class="levelup-rank" id="luRank">E-RANK HUNTER</p>
+      <p class="levelup-copy" id="luCopy">Your body has adapted. New strength is available to you.</p>
+      <button class="btn btn-primary" id="luClose">CONTINUE</button>
+    </div>
+  </div>
+
+  <!-- GENERIC MODAL -->
+  <div class="overlay" id="modal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head">
+        <p class="eyebrow">SYSTEM PROMPT</p>
+        <button class="icon-btn modal-x" id="modalClose" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <h2 id="modalTitle">Confirm</h2>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-actions" id="modalActions"></div>
+    </div>
+  </div>
+
+  <!-- WORKING -->
+  <div class="working" id="working" aria-hidden="true">
+    <div class="working-inner">
+      <div class="working-rune"><i></i><i></i><i></i></div>
+      <p id="workingText">DECRYPTING ARCHIVE</p>
+      <span class="working-sub">DO NOT DISCONNECT</span>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <input type="file" id="fileInput" accept=".xml,.json,.zip,application/json,application/xml,application/zip" hidden />
+  <input type="file" id="backupInput" accept=".json,application/json" hidden />
+
+  <script src="firebase-config.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/training.js"></script>
+  <script src="js/body.js"></script>
+  <script src="js/cloud.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

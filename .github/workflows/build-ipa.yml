@@ -1,0 +1,75 @@
+name: Build ARISE IPA (HealthKit)
+
+# Produces an unsigned-but-ad-hoc-entitled IPA. The ad-hoc signature is a
+# placeholder: AltStore Classic 2.2+ / Impactor read its entitlements and carry
+# com.apple.developer.healthkit into the signature they create on your behalf.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "styles.css"
+      - "js/**"
+      - "assets/**"
+      - "ios/**"
+      - ".github/workflows/build-ipa.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Build app (no Apple account needed)
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project ios/ARISE/ARISE.xcodeproj \
+            -scheme ARISE \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/derived \
+            -archivePath build/ARISE.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            archive
+
+      - name: Package IPA with HealthKit entitlement
+        run: |
+          set -euo pipefail
+          mkdir -p build/Payload
+          cp -R build/ARISE.xcarchive/Products/Applications/ARISE.app build/Payload/ARISE.app
+
+          # Placeholder signature. No certificate, no provisioning profile.
+          codesign --force --sign - \
+            --entitlements ios/ARISE/ARISE/ARISE.entitlements \
+            build/Payload/ARISE.app
+
+          echo "--- entitlements embedded in the IPA ---"
+          codesign -d --entitlements :- build/Payload/ARISE.app
+
+          cd build
+          zip -qry ARISE-HealthKit.ipa Payload
+          cp ../ios/ARISE/ARISE/ARISE.entitlements ./ARISE.entitlements
+          ls -lh ARISE-HealthKit.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARISE-HealthKit-IPA
+          path: |
+            build/ARISE-HealthKit.ipa
+            build/ARISE.entitlements
+          if-no-files-found: error
+          retention-days: 30

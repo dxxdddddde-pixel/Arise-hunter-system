@@ -1,0 +1,57 @@
+{
+  "app": "ARISE",
+  "version": 1,
+  "exportedAt": "2026-11-24T00:00:00.000Z",
+  "state": {
+    "version": 1,
+    "hunter": { "name": "BACKUP TEST" },
+    "sound": true,
+    "bonusXp": 0,
+    "days": {
+      "2026-11-20": {
+        "steps": 9820,
+        "activeEnergy": 540,
+        "basalEnergy": 1700,
+        "exerciseMinutes": 42,
+        "sleepHours": 7.6,
+        "deepHours": 1.4,
+        "remHours": 1.7,
+        "coreHours": 4.2,
+        "awakeHours": 0.3,
+        "hrv": 62,
+        "rhr": 54,
+        "respiratory": 14.2,
+        "vo2max": 47,
+        "wristTemp": 0.2,
+        "hrAvg": 68,
+        "hrMin": 48,
+        "hrMax": 152,
+        "workouts": 1,
+        "_avg": {}
+      }
+    },
+    "workouts": [],
+    "imports": [],
+    "claimed": {},
+    "lastSync": "2026-11-20T08:00:00.000Z",
+    "lastImport": "2026-11-20T08:00:00.000Z",
+    "goals": { "steps": 10000, "exercise": 30, "sleep": 7.5 },
+    "training": null,
+    "body": {
+      "entries": [
+        {
+          "id": "backup-body-1",
+          "date": "2026-11-20",
+          "weight": 80.5,
+          "waist": 88,
+          "avgSteps": 9820,
+          "days": 14,
+          "at": "2026-11-20T08:00:00.000Z"
+        }
+      ],
+      "reminder": { "enabled": true, "nextAt": null, "lastPromptAt": null }
+    },
+    "strength": { "entries": [] },
+    "logs": []
+  }
+}

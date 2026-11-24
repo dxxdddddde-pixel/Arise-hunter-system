@@ -1,0 +1,11 @@
+# Xcode / IPA build output
+build/
+*.xcarchive
+*.ipa
+DerivedData/
+xcuserdata/
+*.xcuserdatad
+
+# OS noise
+.DS_Store
+Thumbs.db
