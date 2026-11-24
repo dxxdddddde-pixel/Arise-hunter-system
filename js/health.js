@@ -44,12 +44,14 @@
   let token = "";
   let expiresAt = 0;
   let granted = [];
+  let scopeKnown = true;
   let status = {
     configured: false,
     ready: false,
     syncing: false,
     authorized: false,
     partial: false,
+    apiPartial: false,
     message: "",
     checkedAt: 0
   };
@@ -68,8 +70,10 @@
     return isFinite(n) ? n : 0;
   }
 
-  function dayKey(ms) {
-    const d = new Date(Number(ms));
+  function dayKey(value) {
+    if (value === null || value === undefined || value === "") return "";
+    const raw = typeof value === "number" || /^\d+$/.test(String(value)) ? Number(value) : value;
+    const d = new Date(raw);
     if (isNaN(d.getTime())) return "";
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -114,6 +118,12 @@
       left -= size;
     }
     return ranges;
+  }
+
+  function sessionFilter(type, field, startKey, endKey) {
+    const exclusiveEnd = D.keyAdd(endKey, 1);
+    const path = type + ".interval." + field;
+    return path + ' >= "' + startKey + '" AND ' + path + ' < "' + exclusiveEnd + '"';
   }
 
   function durationSeconds(value) {
@@ -172,6 +182,7 @@
   }
 
   function missingScopes() {
+    if (!scopeKnown) return [];
     return SCOPES.filter((scope) => !scopeGranted(scope));
   }
 
@@ -184,8 +195,10 @@
       ready: status.ready,
       syncing: status.syncing,
       authorized,
-      partial: missing.length > 0,
+      partial: authorized && (!scopeKnown || missing.length > 0 || status.apiPartial),
       missingScopes: missing,
+      scopeUnknown: authorized && !scopeKnown,
+      apiPartial: status.apiPartial,
       scopes: granted.slice(),
       message: status.message || "",
       lastError: saved.lastError || "",
@@ -265,6 +278,10 @@
     return granted.some((value) => value.toLowerCase() === scope.toLowerCase());
   }
 
+  function canRead(scope) {
+    return !scopeKnown || scopeGranted(scope);
+  }
+
   function startOAuth(action) {
     const id = clientId();
     if (!id) {
@@ -304,12 +321,15 @@
 
   function callbackParams() {
     const url = new URL(location.href);
+    const expected = getStored(OAUTH.state);
+    if (!expected) return null;
     if (!url.searchParams.has("code") && !url.searchParams.has("state") && !url.searchParams.has("error")) return null;
     return {
       code: url.searchParams.get("code"),
       state: url.searchParams.get("state"),
       error: url.searchParams.get("error"),
-      description: url.searchParams.get("error_description") || ""
+      description: url.searchParams.get("error_description") || "",
+      expected
     };
   }
 
@@ -351,12 +371,18 @@
     token = response.access_token;
     const seconds = Math.max(60, Number(response.expires_in) || 3600);
     expiresAt = Date.now() + seconds * 1000 - 60000;
-    granted = response.scope === undefined
-      ? SCOPES.slice()
-      : String(response.scope).split(/\s+/).filter(Boolean);
+    if (response.scope === undefined || response.scope === null) {
+      scopeKnown = false;
+      granted = [];
+    } else {
+      scopeKnown = true;
+      granted = String(response.scope).split(/\s+/).filter(Boolean);
+    }
+    status.apiPartial = false;
     status.authorized = true;
     status.checkedAt = Date.now();
-    status.message = granted.length ? "Google Health connected" : "Google Health connected with no read scopes";
+    status.message = !scopeKnown ? "Google Health connected · granted scopes not reported"
+      : granted.length ? "Google Health connected" : "Google Health connected with no read scopes";
     if (ctx) {
       const saved = health(ctx.getState());
       saved.lastError = null;
@@ -370,27 +396,26 @@
     if (!params) return Promise.resolve();
     cleanCallbackUrl();
 
+    if (!params.state || params.state !== params.expected) {
+      clearOAuthState();
+      handleError("GOOGLE HEALTH CONNECT FAILED", new Error("The Google authorization state did not match. Restart the connection and do not reload during it."), true);
+      return Promise.resolve();
+    }
     if (params.error) {
       clearOAuthState();
       const detail = params.description || params.error;
       handleError("GOOGLE HEALTH CONNECT FAILED", new Error("Google authorization was not granted: " + detail), true);
       return Promise.resolve();
     }
-    if (!params.code || !params.state) {
+    if (!params.code) {
       clearOAuthState();
       handleError("GOOGLE HEALTH CONNECT FAILED", new Error("Google returned an incomplete authorization response."), true);
       return Promise.resolve();
     }
 
-    const expected = getStored(OAUTH.state);
     const verifier = getStored(OAUTH.verifier);
     const redirect = getStored(OAUTH.redirect) || redirectUri();
     const action = getStored(OAUTH.action) || "connect";
-    if (!expected || expected !== params.state) {
-      clearOAuthState();
-      handleError("GOOGLE HEALTH CONNECT FAILED", new Error("The Google authorization state did not match. Restart the connection and do not reload during it."), true);
-      return Promise.resolve();
-    }
     if (!verifier) {
       clearOAuthState();
       handleError("GOOGLE HEALTH CONNECT FAILED", new Error("The PKCE verifier was missing. Restart the connection."), true);
@@ -422,6 +447,8 @@
     token = "";
     expiresAt = 0;
     granted = [];
+    scopeKnown = true;
+    status.apiPartial = false;
     status.authorized = false;
     return false;
   }
@@ -456,6 +483,8 @@
             token = "";
             expiresAt = 0;
             granted = [];
+            scopeKnown = true;
+            status.apiPartial = false;
             status.authorized = false;
           }
           throw error;
@@ -491,7 +520,7 @@
       .then((results) => results.reduce((all, rows) => all.concat(rows), []));
   }
 
-  function queryDataPoints(type, pageSize, maxPages, method) {
+  function queryDataPoints(type, pageSize, maxPages, method, filter) {
     const collected = [];
     const verb = method === "reconcile" ? ":reconcile" : "";
     let pageToken = "";
@@ -499,6 +528,7 @@
 
     function next() {
       const params = new URLSearchParams({ pageSize: String(pageSize) });
+      if (filter) params.set("filter", filter);
       if (pageToken) params.set("pageToken", pageToken);
       return api("/users/me/dataTypes/" + encodeURIComponent(type) + "/dataPoints" + verb + "?" + params.toString())
         .then((response) => {
@@ -525,24 +555,26 @@
   async function loadSnapshot() {
     if (!clientId()) throw new Error("Add healthClientId to firebase-config.js before connecting Google Health.");
     if (!hasValidToken()) throw new Error("Google Health authorization is required. Press SYNC GOOGLE HEALTH to authorize again.");
-    if (!granted.length) throw new Error("No Google Health read scopes were granted. Reconnect and allow at least Activity & Fitness, Sleep, or Health Metrics.");
+    if (scopeKnown && !granted.length) throw new Error("No Google Health read scopes were granted. Reconnect and allow at least Activity & Fitness, Sleep, or Health Metrics.");
 
     const startKey = D.keyAdd(D.todayKey(), -(WINDOW_DAYS - 1));
     const endKey = D.todayKey();
     const inWindow = (key) => !!key && key >= startKey && key <= endKey;
     const jobs = [];
 
-    if (scopeGranted(ACTIVITY_SCOPE)) {
+    if (canRead(ACTIVITY_SCOPE)) {
       jobs.push(
         attempt("steps", () => dailyRollUpWindow("steps", WINDOW_DAYS, WINDOW_DAYS, 90)),
         attempt("activeEnergy", () => dailyRollUpWindow("active-energy-burned", WINDOW_DAYS, WINDOW_DAYS, 90)),
         attempt("totalCalories", () => dailyRollUpWindow("total-calories", WINDOW_DAYS, SHORT_WINDOW_DAYS, 14)),
         attempt("activeMinutes", () => dailyRollUpWindow("active-minutes", WINDOW_DAYS, SHORT_WINDOW_DAYS, 14)),
         attempt("heartRate", () => dailyRollUpWindow("heart-rate", WINDOW_DAYS, SHORT_WINDOW_DAYS, 14)),
-        attempt("exercises", () => queryDataPoints("exercise", 25, 12))
+        attempt("exercises", () => queryDataPoints(
+          "exercise", 25, 40, "", sessionFilter("exercise", "civil_start_time", startKey, endKey)
+        ))
       );
     }
-    if (scopeGranted(METRICS_SCOPE)) {
+    if (canRead(METRICS_SCOPE)) {
       jobs.push(
         attempt("hrv", () => queryDataPoints("daily-heart-rate-variability", 1000, 4)),
         attempt("rhr", () => queryDataPoints("daily-resting-heart-rate", 1000, 4)),
@@ -551,8 +583,10 @@
         attempt("temperature", () => dailyRollUpWindow("core-body-temperature", WINDOW_DAYS, WINDOW_DAYS, 90))
       );
     }
-    if (scopeGranted(SLEEP_SCOPE)) {
-      jobs.push(attempt("sleep", () => queryDataPoints("sleep", 25, 12, "reconcile")));
+    if (canRead(SLEEP_SCOPE)) {
+      jobs.push(attempt("sleep", () => queryDataPoints(
+        "sleep", 25, 40, "reconcile", sessionFilter("sleep", "civil_end_time", startKey, endKey)
+      )));
     }
     jobs.push(attempt("identity", () => api("/users/me/identity")));
 
@@ -563,6 +597,7 @@
       data[result.label] = result.value;
       if (result.error) errors.push(result.error);
     });
+    status.apiPartial = errors.length > 0;
 
     const hasData = results.some((result) => {
       if (result.label === "identity") return false;
@@ -686,6 +721,8 @@
       const interval = exercise.interval || {};
       const start = interval.startTime || "";
       const end = interval.endTime || "";
+      const windowKey = civilKey(interval.civilStartTime) || dayKey(start) || dayKey(end);
+      if (!inWindow(windowKey)) return;
       const measured = durationSeconds(exercise.activeDuration) / 60;
       const fallback = start && end ? (new Date(end).getTime() - new Date(start).getTime()) / 60000 : 0;
       const duration = measured > 0 ? measured : fallback;
@@ -707,7 +744,7 @@
       UI.toast("warn", "NO GOOGLE HEALTH DATA", "Google Health returned no records for the last 40 days.");
     }
 
-    status.partial = missingScopes().length > 0 || errors.length > 0;
+    status.partial = !scopeKnown || missingScopes().length > 0 || errors.length > 0;
     return {
       source: "Google Health",
       filename: "google-health-live",
@@ -752,6 +789,7 @@
       UI.toast("warn", "SYNC IN PROGRESS", "Wait for the current Google Health sync to finish.");
       return;
     }
+    status.apiPartial = false;
     status.configured = !!clientId();
     status.ready = status.configured;
     if (!status.configured) {
@@ -804,12 +842,15 @@
             token = "";
             expiresAt = 0;
             granted = [];
+            scopeKnown = true;
             status.authorized = false;
             status.partial = false;
+            status.apiPartial = false;
             status.message = "Google Health disconnected";
             clearOAuthState();
             if (ctx) {
               const saved = health(ctx.getState());
+              saved.lastSyncAt = null;
               saved.email = null;
               saved.lastError = null;
               saved.scopes = [];
@@ -850,9 +891,14 @@
       label = "SYNC ERROR";
       detail = current.lastError;
     } else if (current.authorized && current.partial) {
+      const reasons = [];
+      if (current.scopeUnknown) reasons.push("Google did not report the granted scopes");
+      if (current.missingScopes.length) {
+        reasons.push("Missing: " + current.missingScopes.map((scope) => SCOPE_LABELS[scope] || scope).join(", "));
+      }
+      if (current.apiPartial) reasons.push("Some Google Health endpoints returned errors");
       label = "PARTIAL LINK";
-      detail = "Only some read scopes were granted. Missing: " +
-        current.missingScopes.map((scope) => SCOPE_LABELS[scope] || scope).join(", ") + ". Unavailable metrics stay blank.";
+      detail = (reasons.length ? reasons.join(". ") + ". " : "") + "Unavailable metrics stay blank.";
     } else if (current.authorized) {
       label = "CONNECTED";
       detail = "Google Health is authorized. Press SYNC GOOGLE HEALTH to refresh your archive.";

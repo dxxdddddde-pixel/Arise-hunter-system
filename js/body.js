@@ -531,7 +531,7 @@
         ${field("AVG STEPS / DAY · CALCULATED", `<input class="modal-input" id="bodyAvgSteps" type="number" readonly value="${avg.avg}" />`, "bodyAvgLabel")}
         <p class="train-hint" id="bodyHint">${avg.days
           ? "AVERAGE OF " + fmt(avg.avg) + " STEPS FROM " + avg.days + " DAILY RECORDS · " + D.fmtShort(avg.from) + " – " + D.fmtShort(avg.to) + "."
-          : "NO STEP RECORDS IN THIS 14-DAY WINDOW. SYNC GOOGLE FIT OR IMPORT HEALTH DATA TO CALCULATE THIS FIELD."}</p>`,
+          : "NO STEP RECORDS IN THIS 14-DAY WINDOW. SYNC GOOGLE HEALTH TO CALCULATE THIS FIELD."}</p>`,
       actions: [
         { label: "CANCEL" },
         {
@@ -596,7 +596,7 @@
         if (hint) {
           hint.textContent = result.days
             ? "AVERAGE OF " + fmt(result.avg) + " STEPS FROM " + result.days + " DAILY RECORDS · " + D.fmtShort(result.from) + " – " + D.fmtShort(result.to) + "."
-            : "NO STEP RECORDS IN THIS 14-DAY WINDOW. SYNC GOOGLE FIT OR IMPORT HEALTH DATA TO CALCULATE THIS FIELD.";
+            : "NO STEP RECORDS IN THIS 14-DAY WINDOW. SYNC GOOGLE HEALTH TO CALCULATE THIS FIELD.";
         }
       });
     }, 80);
