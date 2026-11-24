@@ -2,7 +2,8 @@
    ARISE // cloud link
    ---------------------------------------------------------
    Optional Firebase Google sign-in with automatic, versioned
-   cloud snapshots. localStorage remains the offline source of truth.
+   Firestore snapshots. localStorage remains the offline source
+   of truth. Cloud Storage is not required.
    ========================================================= */
 (function () {
   "use strict";
@@ -13,15 +14,14 @@
   const CDN = "https://www.gstatic.com/firebasejs/11.6.0/";
   const SYNC_DELAY = 15000;
   const HISTORY_LIMIT = 10;
-  const HISTORY_EVERY_MS = 6 * 60 * 60 * 1000;
   const MAX_BYTES = 40 * 1024 * 1024;
+  const CHUNK_CHARS = 700000;
+  const BATCH_LIMIT = 450;
 
   let ctx = null;
   let configured = false;
-  let app = null;
   let auth = null;
   let db = null;
-  let storage = null;
   let user = null;
   let syncTimer = null;
   let syncing = false;
@@ -42,7 +42,7 @@
 
   function isConfigured() {
     const cfg = window.ARISE_FIREBASE_CONFIG || {};
-    const keys = ["apiKey", "authDomain", "projectId", "storageBucket", "appId"];
+    const keys = ["apiKey", "authDomain", "projectId", "appId"];
     configured = keys.every((key) => {
       const value = String(cfg[key] || "").trim();
       return value && !/^(YOUR|PASTE|ADD)_/i.test(value);
@@ -53,7 +53,12 @@
   function loadScript(src) {
     return new Promise((resolve, reject) => {
       const existing = document.querySelector('script[data-firebase-src="' + src + '"]');
-      if (existing && existing.dataset.loaded === "true") return resolve();
+      if (existing) {
+        if (existing.dataset.loaded === "true") return resolve();
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error("Could not load " + src)), { once: true });
+        return;
+      }
       const script = document.createElement("script");
       script.src = src;
       script.async = false;
@@ -72,21 +77,18 @@
       render();
       return;
     }
-    if (!window.firebase) {
+    if (!window.firebase || typeof window.firebase.initializeApp !== "function") {
       await loadScript(CDN + "firebase-app-compat.js");
-      await Promise.all([
-        loadScript(CDN + "firebase-auth-compat.js"),
-        loadScript(CDN + "firebase-firestore-compat.js"),
-        loadScript(CDN + "firebase-storage-compat.js")
-      ]);
     }
+    await Promise.all([
+      typeof window.firebase.auth === "function" ? Promise.resolve() : loadScript(CDN + "firebase-auth-compat.js"),
+      typeof window.firebase.firestore === "function" ? Promise.resolve() : loadScript(CDN + "firebase-firestore-compat.js")
+    ]);
     if (!window.firebase) throw new Error("Firebase SDK unavailable");
 
     if (!firebase.apps.length) firebase.initializeApp(window.ARISE_FIREBASE_CONFIG);
-    app = firebase.app();
     auth = firebase.auth();
     db = firebase.firestore();
-    storage = firebase.storage();
 
     try {
       const result = await auth.getRedirectResult();
@@ -103,6 +105,15 @@
     user = nextUser || null;
     const state = ctx.getState();
     const c = ensure(state);
+    const previousUid = c.uid;
+
+    if (user && previousUid && previousUid !== user.uid) {
+      c.lastSyncAt = null;
+      c.remoteUpdatedAt = null;
+      c.dirty = true;
+      reconciled = false;
+    }
+
     c.uid = user ? user.uid : null;
     c.email = user ? user.email || null : null;
     if (!user) {
@@ -115,28 +126,42 @@
     if (user && !reconciled) {
       reconciled = true;
       reconcile().catch((err) => {
-        c.lastError = err && err.message ? err.message : "Cloud reconciliation failed.";
-        D.saveState(state);
+        const current = ctx.getState();
+        const currentCloud = ensure(current);
+        currentCloud.lastError = err && err.message ? err.message : "Cloud reconciliation failed.";
+        D.saveState(current);
         render();
       });
     }
   }
 
-  function metaPath() {
-    return "users/" + user.uid + "/meta/cloud";
+  function metaRef() {
+    return db.doc("users/" + user.uid + "/meta/cloud");
   }
 
-  function latestPath() {
-    return "users/" + user.uid + "/snapshots/arise-state";
+  function revisionsRef() {
+    return db.collection("users/" + user.uid + "/snapshots/revisions");
   }
 
-  function historyPath(stamp) {
-    return "users/" + user.uid + "/snapshots/history/arise-" + stamp;
+  function revisionRef(id) {
+    return db.doc("users/" + user.uid + "/snapshots/revisions/" + id);
+  }
+
+  function chunksRef(id) {
+    return revisionRef(id).collection("chunks");
+  }
+
+  function chunkRef(id, index) {
+    return chunksRef(id).doc(String(index).padStart(4, "0"));
+  }
+
+  function newRevisionId() {
+    return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
   }
 
   async function getRemoteMeta() {
     if (!db || !user) return null;
-    const snap = await db.doc(metaPath()).get();
+    const snap = await metaRef().get();
     return snap.exists ? snap.data() : null;
   }
 
@@ -147,126 +172,246 @@
     };
   }
 
-  async function encode(text) {
+  function hasLocalData(state) {
+    return Object.keys(state.days || {}).length > 0 ||
+      !!(state.training && Array.isArray(state.training.logs) && state.training.logs.length);
+  }
+
+  function toBase64(bytes) {
+    let binary = "";
+    const step = 0x8000;
+    for (let i = 0; i < bytes.length; i += step) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + step, bytes.length)));
+    }
+    return btoa(binary);
+  }
+
+  function fromBase64(text) {
+    const binary = atob(text);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  async function hashBytes(bytes) {
+    if (!window.crypto || !window.crypto.subtle || !window.crypto.subtle.digest) return null;
+    try {
+      const digest = await window.crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async function pack(text) {
     if (typeof TextEncoder === "undefined") throw new Error("TextEncoder unavailable");
     const bytes = new TextEncoder().encode(text);
-    if (typeof CompressionStream !== "undefined" && typeof DecompressionStream !== "undefined") {
-      const stream = new CompressionStream("gzip");
-      const writer = stream.writable.getWriter();
-      await writer.write(bytes);
-      await writer.close();
-      const buffer = await new Response(stream.readable).arrayBuffer();
-      return { bytes: new Uint8Array(buffer), encoding: "gzip", contentType: "application/gzip" };
+    if (bytes.length > MAX_BYTES) throw new Error("Archive is too large for cloud sync.");
+
+    const base64 = toBase64(bytes);
+    const chunkCount = Math.max(1, Math.ceil(base64.length / CHUNK_CHARS));
+    if (chunkCount > BATCH_LIMIT) throw new Error("Archive has too many chunks for cloud sync.");
+
+    const chunks = [];
+    for (let i = 0; i < chunkCount; i++) {
+      chunks.push(base64.slice(i * CHUNK_CHARS, (i + 1) * CHUNK_CHARS));
     }
-    return { bytes, encoding: "json", contentType: "application/json" };
+    return {
+      encoding: "json",
+      bytes: bytes.length,
+      checksum: await hashBytes(bytes),
+      chunkCount,
+      chunkSize: CHUNK_CHARS,
+      chunks
+    };
   }
 
-  async function decode(bytes, encoding) {
-    const raw = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    if (encoding === "gzip") {
-      if (typeof DecompressionStream === "undefined") throw new Error("This browser cannot read gzip snapshots.");
-      const stream = new DecompressionStream("gzip");
-      const writer = stream.writable.getWriter();
-      await writer.write(raw);
-      await writer.close();
-      const buffer = await new Response(stream.readable).arrayBuffer();
-      return new TextDecoder().decode(buffer);
+  async function unpack(bytes, encoding, expectedChecksum) {
+    if (expectedChecksum) {
+      const actual = await hashBytes(bytes);
+      if (actual && actual !== expectedChecksum) throw new Error("Cloud snapshot checksum mismatch.");
     }
-    return new TextDecoder().decode(raw);
+    if (encoding && encoding !== "json") throw new Error("Unknown cloud snapshot format.");
+    return new TextDecoder().decode(bytes);
   }
 
-  async function uploadToCloud(manual) {
-    if (!user || !storage || !db) {
+  async function writeChunks(revisionId, chunks) {
+    let batch = db.batch();
+    let pending = 0;
+    for (let i = 0; i < chunks.length; i++) {
+      batch.set(chunkRef(revisionId, i), { app: "ARISE", index: i, text: chunks[i] });
+      pending++;
+      if (pending >= BATCH_LIMIT) {
+        await batch.commit();
+        batch = db.batch();
+        pending = 0;
+      }
+    }
+    if (pending) await batch.commit();
+  }
+
+  async function createRevision(packed, schemaVersion) {
+    const id = newRevisionId();
+    const now = Date.now();
+    await writeChunks(id, packed.chunks);
+    await revisionRef(id).set({
+      app: "ARISE",
+      id,
+      createdAt: now,
+      createdISO: new Date(now).toISOString(),
+      encoding: packed.encoding,
+      bytes: packed.bytes,
+      checksum: packed.checksum,
+      chunkCount: packed.chunkCount,
+      chunkSize: packed.chunkSize,
+      schemaVersion: schemaVersion || 1
+    });
+    return id;
+  }
+
+  async function deleteRevision(revisionId) {
+    if (!revisionId) return;
+    const snap = await chunksRef(revisionId).get();
+    let batch = db.batch();
+    let pending = 0;
+    for (const doc of snap.docs) {
+      batch.delete(doc.ref);
+      pending++;
+      if (pending >= BATCH_LIMIT) {
+        await batch.commit();
+        batch = db.batch();
+        pending = 0;
+      }
+    }
+    if (pending) await batch.commit();
+    await revisionRef(revisionId).delete().catch(() => null);
+  }
+
+  async function trimHistory(protectId) {
+    if (!user || !db) return;
+    const snap = await revisionsRef().orderBy("createdAt", "desc").limit(HISTORY_LIMIT + 25).get();
+    const keep = snap.docs.slice(0, HISTORY_LIMIT).map((doc) => doc.id);
+    const old = snap.docs.filter((doc) => keep.indexOf(doc.id) === -1 && doc.id !== protectId);
+    for (const doc of old) {
+      await deleteRevision(doc.id).catch(() => null);
+    }
+  }
+
+  async function uploadToCloud(manual, overwrite) {
+    if (!user || !db) {
       if (manual) UI.toast("warn", "SIGN IN REQUIRED", "Sign in with Google before syncing to the cloud.");
       return;
     }
-    if (syncing) return;
+    if (syncing) {
+      if (manual) UI.toast("warn", "SYNC IN PROGRESS", "Wait for the current cloud sync to finish.");
+      return;
+    }
+
     const state = ctx.getState();
     const c = ensure(state);
     syncing = true;
     c.syncing = true;
     render();
 
+    let pendingId = null;
     try {
+      const meta = await getRemoteMeta();
+      const remoteAt = Number(meta && meta.updatedAt) || 0;
+      const localAt = Number(c.lastSyncAt) || 0;
+
+      if (meta && meta.revisionId && remoteAt > localAt && !overwrite) {
+        if (c.dirty) {
+          showConflict(meta);
+        } else {
+          await downloadFromCloud(false, meta);
+        }
+        return;
+      }
+
       const snapshotState = JSON.parse(JSON.stringify(state));
-      snapshotState.cloud = Object.assign({}, snapshotState.cloud, { dirty: false, syncing: false, lastError: null });
+      snapshotState.cloud = Object.assign({}, snapshotState.cloud, {
+        dirty: false,
+        syncing: false,
+        lastError: null
+      });
       const text = JSON.stringify({
         app: "ARISE",
         version: state.version || 1,
         exportedAt: new Date().toISOString(),
         state: snapshotState
       });
-      const packed = await encode(text);
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const ext = packed.encoding === "gzip" ? ".gz" : ".json";
-      const latest = latestPath() + ext;
-      const meta = await getRemoteMeta();
+      const packed = await pack(text);
       const now = Date.now();
-
-      await storage.ref(latest).put(packed.bytes, { contentType: packed.contentType });
-
-      const makeHistory = manual || !meta || !meta.historyAt || (now - Number(meta.historyAt) > HISTORY_EVERY_MS);
-      if (makeHistory) await storage.ref(historyPath(stamp) + ext).put(packed.bytes, { contentType: packed.contentType });
-
       const n = counts(state);
-      await db.doc(metaPath()).set({
+
+      pendingId = await createRevision(packed, state.version || 1);
+      await metaRef().set({
         uid: user.uid,
         email: user.email || null,
         updatedAt: now,
         updatedISO: new Date(now).toISOString(),
-        path: latest,
+        revisionId: pendingId,
+        revisionAt: now,
         encoding: packed.encoding,
-        bytes: packed.bytes.length,
+        bytes: packed.bytes,
+        checksum: packed.checksum,
+        chunkCount: packed.chunkCount,
         days: n.days,
         sets: n.sets,
-        historyAt: makeHistory ? now : Number(meta.historyAt) || now,
         app: "ARISE",
         schemaVersion: state.version || 1
       });
+      pendingId = null;
 
       c.dirty = false;
-      c.syncing = false;
       c.lastSyncAt = now;
       c.remoteUpdatedAt = now;
       c.lastError = null;
-      D.saveState(state);
-      render();
       if (manual) UI.toast("success", "CLOUD SYNCED", n.days + " days and " + n.sets + " sets uploaded.");
-      if (makeHistory) trimHistory().catch(() => { /* best effort */ });
+      trimHistory().catch(() => { /* best effort */ });
     } catch (err) {
-      c.syncing = false;
       c.lastError = err && err.message ? err.message : "Upload failed.";
-      D.saveState(state);
-      render();
       UI.toast("error", "CLOUD SYNC FAILED", c.lastError);
+      if (pendingId) deleteRevision(pendingId).catch(() => null);
     } finally {
       syncing = false;
+      const current = ctx.getState();
+      const currentCloud = ensure(current);
+      currentCloud.syncing = false;
+      D.saveState(current);
+      render();
     }
   }
 
-  async function trimHistory() {
-    if (!storage || !user) return;
-    const folder = storage.ref("users/" + user.uid + "/snapshots/history");
-    const listing = await folder.listAll();
-    const items = listing.items.slice().sort((a, b) => b.name.localeCompare(a.name));
-    const old = items.slice(HISTORY_LIMIT);
-    await Promise.all(old.map((item) => item.delete().catch(() => null)));
-  }
-
-  async function downloadFromCloud(force) {
-    if (!user || !storage || !db) {
+  async function downloadFromCloud(force, knownMeta) {
+    if (!user || !db) {
       if (force) UI.toast("warn", "SIGN IN REQUIRED", "Sign in with Google before downloading cloud data.");
       return;
     }
     try {
-      const meta = await getRemoteMeta();
-      if (!meta || !meta.path) {
+      const meta = knownMeta || await getRemoteMeta();
+      if (!meta || !meta.revisionId) {
         UI.toast("warn", "NO CLOUD ARCHIVE", "Nothing has been uploaded for this account yet.");
         return;
       }
-      const task = await storage.ref(meta.path).getBytes(MAX_BYTES);
-      const bytes = task.bytes || task;
-      const text = await decode(bytes, meta.encoding || "json");
+
+      const revisionSnap = await revisionRef(meta.revisionId).get();
+      const revision = revisionSnap.exists ? revisionSnap.data() : null;
+      const info = Object.assign({}, meta, revision || {});
+      const chunkCount = Number(info.chunkCount) || 0;
+      if (!chunkCount || chunkCount > BATCH_LIMIT) throw new Error("Cloud snapshot metadata is invalid.");
+      if (Number(info.bytes) > MAX_BYTES) throw new Error("Cloud snapshot is too large.");
+
+      const parts = [];
+      for (let i = 0; i < chunkCount; i++) {
+        const chunkSnap = await chunkRef(meta.revisionId, i).get();
+        const data = chunkSnap.exists ? chunkSnap.data() : null;
+        if (!data || typeof data.text !== "string") throw new Error("Cloud snapshot is incomplete.");
+        parts.push(data.text);
+      }
+
+      const bytes = fromBase64(parts.join(""));
+      const text = await unpack(bytes, info.encoding || meta.encoding, info.checksum || meta.checksum);
       const payload = JSON.parse(text);
       if (!payload || !payload.state || typeof payload.state !== "object") throw new Error("Cloud snapshot is invalid.");
       applyRemote(payload.state, meta);
@@ -283,10 +428,11 @@
   function applyRemote(remoteState, meta) {
     const restored = D.normalizeState(remoteState);
     const c = ensure(restored);
+    const syncedAt = Number(meta.updatedAt) || Date.now();
     c.uid = user ? user.uid : null;
     c.email = user ? user.email || null : null;
-    c.lastSyncAt = Date.now();
-    c.remoteUpdatedAt = Number(meta.updatedAt) || Date.now();
+    c.lastSyncAt = syncedAt;
+    c.remoteUpdatedAt = syncedAt;
     c.dirty = false;
     c.syncing = false;
     c.lastError = null;
@@ -294,40 +440,43 @@
     ctx.persist("cloud");
     UI.render(restored);
     UI.setView("status");
-    UI.toast("success", "CLOUD ARCHIVE RESTORED", "This device now matches your latest Firebase snapshot.");
+    UI.toast("success", "CLOUD ARCHIVE RESTORED", "This device now matches your latest Firestore snapshot.");
   }
 
   async function reconcile() {
-    if (!user) return;
+    if (!user || !db) return;
     const state = ctx.getState();
     const c = ensure(state);
     const meta = await getRemoteMeta();
 
-    if (!meta || !meta.path) {
-      c.remoteUpdatedAt = null;
-      if (Object.keys(state.days || {}).length || (state.training && Array.isArray(state.training.logs) && state.training.logs.length)) {
-        await uploadToCloud(false);
+    if (!meta || !meta.revisionId) {
+      c.remoteUpdatedAt = Number(meta && meta.updatedAt) || null;
+      if (hasLocalData(state)) {
+        await uploadToCloud(false, true);
+        return;
       }
+      D.saveState(state);
       render();
       return;
     }
 
     const remoteAt = Number(meta.updatedAt) || 0;
-    c.remoteUpdatedAt = remoteAt;
     const localAt = Number(c.lastSyncAt) || 0;
     const localDirty = !!c.dirty;
+    c.remoteUpdatedAt = remoteAt;
 
-    if (localAt === remoteAt) {
-      c.dirty = false;
-    } else if (!localDirty && localAt < remoteAt) {
-      await downloadFromCloud(false);
-      return;
-    } else if (localDirty && localAt < remoteAt) {
-      showConflict(meta);
-      return;
-    } else {
+    if (remoteAt > localAt) {
+      if (localDirty) {
+        showConflict(meta);
+      } else {
+        await downloadFromCloud(false, meta);
+        return;
+      }
+    } else if (localDirty) {
       await uploadToCloud(false);
       return;
+    } else {
+      c.dirty = false;
     }
     D.saveState(state);
     render();
@@ -342,11 +491,11 @@
              <p>Choose which version to keep. Nothing is overwritten until you decide.</p>`,
       actions: [
         { label: "CANCEL" },
-        { label: "UPLOAD DEVICE", onClick: () => uploadToCloud(true) },
+        { label: "UPLOAD DEVICE", onClick: () => uploadToCloud(true, true) },
         {
           label: "USE CLOUD DATA",
           kind: "primary",
-          onClick: () => downloadFromCloud(true)
+          onClick: () => downloadFromCloud(true, meta)
         }
       ]
     });

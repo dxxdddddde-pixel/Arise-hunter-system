@@ -1,7 +1,7 @@
 /* ARISE // offline app shell. Works from a GitHub Pages subfolder. */
 "use strict";
 
-const CACHE = "arise-hunter-v2";
+const CACHE = "arise-hunter-v4";
 const SCOPE = self.registration.scope;
 const abs = (path) => new URL(path, SCOPE).href;
 
@@ -30,8 +30,7 @@ const PRECACHE = [
   "./js/app.js",
   "https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js",
   "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth-compat.js",
-  "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore-compat.js",
-  "https://www.gstatic.com/firebasejs/11.6.0/firebase-storage-compat.js"
+  "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore-compat.js"
 ].map(abs);
 
 self.addEventListener("install", (event) => {

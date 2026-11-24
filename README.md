@@ -18,7 +18,8 @@ No build step, no server, no account. Open `index.html` and it runs.
    - click **LOAD DEMO** to preview 40 days of realistic Apple Watch data, or
    - click **SYNC APPLE WATCH** (or drag a file onto the Data Link screen) to import your own archive.
 
-Everything is stored in `localStorage` under `arise-hunter-system-v1`. Nothing is uploaded.
+Everything is stored in `localStorage` under `arise-hunter-system-v1`. Nothing is uploaded unless you
+enable the optional Firebase Cloud Link.
 
 If your browser blocks local-file features, serve the folder instead:
 
@@ -77,7 +78,7 @@ snapshots you can restore on any device.
 3. Enable **Authentication → Sign-in method → Google**, then add your GitHub Pages domain
    (`<username>.github.io`, or your custom domain) under **Authorized domains**.
 4. Create a **Cloud Firestore** database (start in production mode, then publish the rules below).
-5. Create **Cloud Storage** (start in production mode, then publish the rules below).
+   Cloud Storage is not needed, so the app works on the free Spark plan.
 
 ### 2. Add your config
 
@@ -88,7 +89,6 @@ window.ARISE_FIREBASE_CONFIG = {
   apiKey: "AIza...",
   authDomain: "your-project.firebaseapp.com",
   projectId: "your-project",
-  storageBucket: "your-project.firebasestorage.app",
   appId: "1:123456789:web:abcdef"
 };
 ```
@@ -110,27 +110,14 @@ service cloud.firestore {
 }
 ```
 
-**Storage rules:**
-
-```text
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /users/{userId}/{allPaths=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-  }
-}
-```
-
 ### 4. Use it
 
 - Open **Data Link → Cloud Link → SIGN IN WITH GOOGLE**. A redirect is used instead of a popup so it
   works reliably in Safari on iPhone.
 - After changes, the archive uploads automatically about **15 seconds** after the last edit.
 - **SYNC NOW**, **UPLOAD TO CLOUD** and **DOWNLOAD FROM CLOUD** are available for manual control.
-- The latest snapshot is `users/<uid>/snapshots/arise-state.gz` (or `.json` when gzip is unavailable).
-  A history snapshot is saved at most every 6 hours and the newest 10 are kept.
+- Snapshots are split into Firestore document chunks and stored under
+  `users/<uid>/snapshots/revisions/`. The newest 10 revisions are kept.
 - If this device has unsynced edits and the cloud is newer, the System asks which version to keep —
   it never overwrites silently.
 
@@ -140,8 +127,8 @@ syncing simply waits until the network returns.
 ### Costs
 
 A single personal account stays inside the Firebase **Spark (free)** plan in normal use: Firestore
-stores one small metadata document, and Cloud Storage holds one latest snapshot plus up to 10 history
-snapshots.
+stores one small metadata document plus up to 10 chunked snapshot revisions. Cloud Storage and Blaze
+are not required.
 
 ---
 
@@ -384,7 +371,7 @@ respects `prefers-reduced-motion` for particles and animations.
   **Cloud Link** and sign in.
 - Without Cloud Link, data lives only in this browser profile's `localStorage`.
 - With Cloud Link, Firebase stores your signed-in account identifier and encrypted-in-transit
-  snapshots in your own user folder. Only that account can read them.
+  snapshots in Firestore documents under your own user ID. Only that account can read them.
 - On GitHub Pages, `sw.js` caches the app's own files and Firebase SDK so it opens offline.
 - **Data Link → Export Backup** writes a JSON snapshot you can keep.
 - **Data Link → Import Backup** restores that snapshot on another device.
