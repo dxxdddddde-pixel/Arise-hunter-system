@@ -1,16 +1,16 @@
 /* ARISE // offline app shell. Works from a GitHub Pages subfolder. */
 "use strict";
 
-const CACHE = "arise-hunter-v9";
+const CACHE = "arise-hunter-v10";
 const SCOPE = self.registration.scope;
 const abs = (path) => new URL(path, SCOPE).href;
 
 const PRECACHE = [
   "./",
   "./index.html",
-  "./styles.css?v=9",
+  "./styles.css?v=10",
   "./manifest.webmanifest",
-  "./firebase-config.js?v=9",
+  "./firebase-config.js?v=10",
   "./assets/fonts.css",
   "./assets/fonts/Orbitron-500.woff2",
   "./assets/fonts/Rajdhani-400.woff2",
@@ -22,12 +22,13 @@ const PRECACHE = [
   "./assets/icons/icon-512.png",
   "./assets/icons/apple-touch-icon.png",
   "./assets/icons/favicon-32.png",
-  "./js/data.js?v=9",
-  "./js/ui.js?v=9",
-  "./js/training.js?v=9",
-  "./js/body.js?v=9",
-  "./js/cloud.js?v=9",
-  "./js/app.js?v=9",
+  "./js/data.js?v=10",
+  "./js/ui.js?v=10",
+  "./js/training.js?v=10",
+  "./js/body.js?v=10",
+  "./js/cloud.js?v=10",
+  "./js/fit.js?v=10",
+  "./js/app.js?v=10",
   "https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js",
   "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth-compat.js",
   "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore-compat.js"

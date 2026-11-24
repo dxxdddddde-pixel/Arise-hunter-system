@@ -1,7 +1,7 @@
 # ARISE // Hunter Interface
 
 A single-page health dashboard with **Solo Leveling** "System" styling, built on top of your own
-**Apple Watch** data. Recovery, strain and sleep scores are recalculated locally, then fed into a
+**Google Fit** data. Recovery, strain and sleep scores are recalculated locally, then fed into a
 hunter profile: XP, levels, E→Monarch ranks, attributes, daily/weekly quests, a full Training Grounds
 protocol builder, a 14-day Body Log with monthly strength peaks and eighteen unlockable shadows.
 
@@ -15,11 +15,14 @@ No build step, no server, no account. Open `index.html` and it runs.
    - Windows: double-click the file, or run `Start-Process index.html` from PowerShell.
 2. The System boots with an empty archive and shows **"AWAITING SYNC"**.
 3. Either:
-   - click **LOAD DEMO** to preview 40 days of realistic Apple Watch data, or
-   - click **SYNC APPLE WATCH** (or drag a file onto the Data Link screen) to import your own archive.
+   - click **LOAD DEMO** to preview 40 days of realistic health data, or
+   - click **SYNC GOOGLE FIT** to authorize and pull your last 40 days from Google Fit, or
+   - drag a health archive onto the Data Link screen as a fallback import.
 
 Everything is stored in `localStorage` under `arise-hunter-system-v1`. Nothing is uploaded unless you
-enable the optional Firebase Cloud Link.
+enable the optional Firebase Cloud Link. **Google Fit live sync requires an HTTPS origin** (GitHub
+Pages or localhost); opening `index.html` directly with `file://` is fine for demo/file import but
+Google will reject the OAuth origin.
 
 If your browser blocks local-file features, serve the folder instead:
 
@@ -64,8 +67,91 @@ The first visit needs an internet connection so the app shell can be cached. Aft
 serves the dashboard offline. Data is stored per device in Safari's site data unless you enable the
 optional Firebase Cloud Link below.
 
-> Live HealthKit reading is not available to websites. Use the official Apple Health export,
-> Health Auto Export JSON, or the sideloaded native shell described below.
+> Google Fit live sync needs a legacy Google Cloud project with the Fitness API already enabled.
+> If yours does not have it, use the official Apple Health export or Health Auto Export JSON fallback.
+
+---
+
+## Google Fit live sync (legacy projects only)
+
+**Data Link → Google Fit Uplink** authorizes the browser directly with Google Identity Services and
+reads the last 40 days from the legacy Google Fit REST API. The snapshot goes through the same
+`SystemData.buildLiveResult()` pipeline as file imports, so scoring, XP, quests, ranks and the rest of
+the game systems stay identical.
+
+> [!IMPORTANT]
+> **Google Fit is deprecated.** Since May 1 2024, new developers cannot sign up, and the Fitness API
+> cannot be enabled on new Cloud projects. This works only if you already own a legacy project where
+> Fitness API access was enabled. If you do not, use the file-import fallback below. Migrating to the
+> newer Google Health API / Health Connect would be a separate project.
+
+### 1. Prepare the Google Cloud project
+
+1. Open **Google Cloud Console → APIs & Services → Library** in the project that owns your OAuth
+   client and enable **Fitness API** (if it is not already enabled).
+2. Open **OAuth consent screen** and add these read scopes:
+   - `https://www.googleapis.com/auth/fitness.activity.read`
+   - `https://www.googleapis.com/auth/fitness.sleep.read`
+   - `https://www.googleapis.com/auth/fitness.heart_rate.read`
+   - `https://www.googleapis.com/auth/fitness.body_temperature.read`
+3. Add your GitHub Pages **origin** as an **Authorized JavaScript origin**:
+   `https://<username>.github.io` (origin only — no `/<repo>` path). Add `http://localhost:8080` too
+   if you test locally with a static server.
+4. Copy the project's web OAuth **Client ID**. Do not test Fit from `file://` — use GitHub Pages or
+   `http://localhost:8080`.
+
+### 2. Add the client ID
+
+Open `firebase-config.js` and set `fitClientId` to that legacy client ID. If it matches your existing
+`googleClientId`, you can leave `fitClientId` the same or omit it — the app falls back to
+`googleClientId`.
+
+```js
+window.ARISE_FIREBASE_CONFIG = {
+  // ...Firebase values...
+  googleClientId: "123456789-abc.apps.googleusercontent.com",
+  fitClientId: "123456789-abc.apps.googleusercontent.com" // must be Fit-enabled
+};
+```
+
+The client ID is public by design. Access is controlled by Google's OAuth consent screen, not by
+hiding the ID.
+
+### 3. Sync
+
+1. Open **Data Link → Google Fit Uplink** and press **CONNECT GOOGLE FIT**.
+2. Press **SYNC GOOGLE FIT**. The app requests steps, calories, active minutes, sleep sessions and
+   stages, heart-rate summaries, wrist temperature, workouts and basal metabolic rate.
+3. If an archive already exists, confirm **REPLACE ARCHIVE**. Hunter name, claimed quest XP, audio
+   setting, Training Grounds, Body Log and Strength Log are preserved.
+4. Press **SYNC GOOGLE FIT** again whenever you want a refresh. Authorization is session-only, so a
+   new browser session may ask you to authorize again.
+
+### What Fit can and cannot supply
+
+| ARISE metric | Google Fit source |
+| --- | --- |
+| Steps | `com.google.step_count.delta` |
+| Active energy / basal energy | `com.google.calories.expended` minus `com.google.calories.bmr` |
+| Exercise minutes | `com.google.active_minutes` |
+| Sleep, deep, REM, core, awake | `com.google.sleep.segment` + sleep sessions |
+| Heart rate | `com.google.heart_rate.summary` |
+| Wrist temperature | `com.google.body.temperature` (wrist readings only) |
+| Gates/workouts | Fit sessions, mapped by activity type |
+| HRV, resting HR, respiratory rate, VO₂ max | Not available from the core Fit types — left blank |
+
+Because HRV/resting HR are not exposed, Recovery leans on sleep and wrist temperature when syncing
+from Fit. The fallback file import can still populate those extra metrics if your source provides them.
+
+### Troubleshooting
+
+- **403 / "Fitness API is not enabled"** — the OAuth client belongs to a project without legacy
+  Fitness API access, or a scope is missing from the consent screen.
+- **401 / "authorization expired"** — press **SYNC GOOGLE FIT** to authorize again.
+- **"Google Identity Services did not load"** — check the network connection and reload; the GIS
+  script comes from `accounts.google.com`.
+- **"NO GOOGLE FIT DATA"** — the authorized account has no Fit records in the last 40 days, or the
+  enabled data types are not being written by your phone/watch app.
 
 ---
 
@@ -97,7 +183,8 @@ window.ARISE_FIREBASE_CONFIG = {
   authDomain: "your-project.firebaseapp.com",
   projectId: "your-project",
   appId: "1:123456789:web:abcdef",
-  googleClientId: "123456789-abc.apps.googleusercontent.com"
+  googleClientId: "123456789-abc.apps.googleusercontent.com",
+  fitClientId: "123456789-abc.apps.googleusercontent.com"
 };
 ```
 
@@ -153,12 +240,12 @@ are not required.
 
 ---
 
-## Connecting your Apple Watch
+## File import fallback (Apple Health / Health Auto Export)
 
-Websites cannot read **HealthKit** directly — Apple only exposes it to native iOS/watchOS apps. This
-app therefore consumes a file exported from your iPhone. Two formats are supported.
+Use this when Google Fit is unavailable for your project or when you want extra metrics such as HRV
+and resting heart rate. Two formats are supported.
 
-### Option A — Apple Health export (recommended)
+### Option A — Apple Health export
 
 1. On iPhone open **Health** → tap your **profile picture** → **Export All Health Data**.
 2. Share/save the resulting **`export.zip`** to the device running this app.
@@ -179,9 +266,9 @@ multi-day file and an array of daily files are all accepted.
 
 ### Re-syncing
 
-Each import **replaces** movement, sleep and workout history so scores never double-count. Your
-hunter name, claimed quest XP and audio setting are preserved. An import summary is written to the
-System Feed, and the last 12 imports are listed on the Data Link screen.
+Each Google Fit sync or file import **replaces** movement, sleep and workout history so scores never
+double-count. Your hunter name, claimed quest XP and audio setting are preserved. An import summary is
+written to the System Feed, and the last 12 imports are listed on the Data Link screen.
 
 ---
 
@@ -191,7 +278,7 @@ Scores are heuristics meant for motivation and trend-spotting, not medical diagn
 
 | Score | Range | Inputs |
 | --- | --- | --- |
-| **Recovery** | 0–100 | HRV and resting heart rate vs. your own 28-day baseline, last night's sleep, respiratory rate, wrist-temperature deviation |
+| **Recovery** | 0–100 | HRV and resting heart rate vs. your own 28-day baseline (file import only), last night's sleep, respiratory rate, wrist-temperature deviation |
 | **Strain** | 0–21 | Active energy, exercise minutes, workout duration and workout intensity |
 | **Sleep** | 0–100 | Total sleep, awake time, deep-sleep share, REM share |
 
@@ -283,7 +370,7 @@ The **Body Log** view keeps long-term physical records separate from the daily T
 - **Biometric checkpoints** — log **body weight** and **waist (cm)** once every **14 days**. The date
   picker is locked to the next checkpoint after your last entry, so the cadence stays consistent. The
   header shows when the next checkpoint is due.
-- **Calculated average steps** — the System reads your imported Apple Watch archive and averages daily
+- **Calculated average steps** — the System reads your Google Fit archive (or imported fallback file) and averages daily
   steps over the 14 days ending on the checkpoint date. The modal shows how many daily records fed the
   calculation; no step field is typed by hand.
 - **Checkpoint reminders** — once a checkpoint is due, an in-app popup appears immediately and repeats
@@ -308,69 +395,12 @@ are included in JSON backups.
 
 ---
 
-## Native iOS app — live HealthKit (sideloaded)
+## Legacy iOS shell (not used)
 
-The browser version above cannot read HealthKit. This repository also contains a native iOS shell: a
-small Swift app that reads HealthKit **on your iPhone** and feeds the exact same ARISE dashboard
-through a WKWebView bridge. You keep every score, quest, rank and visual already built — plus live
-readings from your Watch.
-
-### What you need
-
-- Your iPhone (iOS 16+) and any computer with internet access (Windows, macOS or Linux)
-- A free GitHub account — GitHub provides the macOS runner with Xcode
-- A free Apple ID for sideloading, plus **AltStore Classic 2.2+** or **Impactor** on the computer
-- Developer Mode on the iPhone: Settings → Privacy & Security → Developer Mode
-
-> I cannot compile or sign an `.ipa` on Windows — Xcode only runs on macOS. The GitHub Actions
-> workflow does it on a Mac and hands you the finished file.
-
-### Build the IPA without a Mac
-
-1. Create a free GitHub repository and push this folder to it.
-2. Open the repo → **Actions** → **Build ARISE IPA (HealthKit)** → **Run workflow**.
-3. When the job finishes, download the **ARISE-HealthKit-IPA** artifact and unzip it.
-4. Keep both files: `ARISE-HealthKit.ipa` and `ARISE.entitlements`.
-
-The workflow builds unsigned, then applies an ad-hoc *placeholder* signature that embeds
-`com.apple.developer.healthkit`. This is deliberate: **Sideloadly discards unknown entitlements**,
-whereas **AltStore Classic 2.2+ and Impactor carry them over** when they re-sign with your Apple ID.
-Bundle ID is `com.arise.hunter.system` — do not change it.
-
-### Install and connect
-
-1. Install AltStore Classic 2.2+ (altstore.io) or Impactor and sign in with your Apple ID.
-2. Sideload `ARISE-HealthKit.ipa` with that same Apple ID. If your tool exposes a **custom entitlements**
-   option, point it at `ARISE.entitlements`.
-3. On the iPhone: Settings → General → VPN & Device Management → your Apple ID → **Trust**.
-4. Open ARISE and allow Health access (steps, workouts, sleep, heart rate, HRV, resting heart rate,
-   respiratory rate, VO2 max, wrist temperature).
-5. Tap **SYNC HEALTHKIT** to refresh at any time. It also syncs automatically on launch.
-
-The link screen shows **HEALTHKIT LIVE** instead of **ARCHIVE LINKED** when running in the native shell.
-
-### Honest limitations
-
-- A free Apple ID allows **3 sideloaded apps** and each build expires after **7 days**. AltStore can
-  auto-refresh over Wi-Fi. Export a backup before reinstalling.
-- Apple can refuse to place HealthKit in a free-account provisioning profile. If you see
-  `Missing com.apple.developer.healthkit entitlement`, file import still works, but live reading then
-  needs the paid Apple Developer Program: enable **HealthKit** on App ID `com.arise.hunter.system`,
-  delete the old app from the phone, and sideload again with that account.
-- With a Mac, the cleanest route is `ios/ARISE/ARISE.xcodeproj` → Signing & Capabilities →
-  **+ HealthKit** → select your team → Run on device. The entitlement is signed at build time, so no
-  re-signing step can strip it.
-- Build the same IPA locally on a Mac with `sh ios/build-ipa.sh`.
-
-### How the bridge works
-
-```
-Apple Watch → HealthKit (on iPhone) → HealthKitManager.swift → WKWebView event → ARISE dashboard
-```
-
-`js/app.js` listens for `arise:snapshot`, converts it with `SystemData.buildLiveResult()` and runs the
-normal import pipeline — identical scoring, XP and quest logic to ZIP/XML imports. State is mirrored
-from `localStorage` into the app sandbox so it survives a web-view data reset. Nothing is uploaded.
+The `ios/` folder and `.github/workflows/build-ipa.yml` are left over from an earlier HealthKit
+sideloading build. They are **not** part of the current workflow. The web app has no native bridge;
+it runs entirely from GitHub Pages and pulls live data only from Google Fit (or from a fallback file
+import). You can ignore or delete those legacy files.
 
 ---
 
@@ -438,16 +468,18 @@ js/ui.js            renderers and view components
 js/training.js      weekly plan builder, set ledger, 1RM, overload, charts, PRs
 js/body.js          biometric checkpoints, calculated steps, monthly strength peaks
 js/cloud.js         Google sign-in, automatic Firebase snapshot sync, restore
-js/app.js           boot, event wiring, import/export backup, native bridge
+js/fit.js           Google Fit OAuth + REST mapping into the live snapshot pipeline
+js/app.js           boot, event wiring, import/export backup, Google Fit sync
 assets/fonts/       self-hosted fonts
 assets/icons/       PWA + Apple touch icons
 test-fixtures/      sample archives for testing imports
-ios/ARISE/          SwiftUI + HealthKit shell that hosts the dashboard
-ios/build-ipa.sh    local macOS IPA build
-.github/workflows/  GitHub Actions Pages deployment + IPA builder
+ios/ARISE/          LEGACY SwiftUI + HealthKit shell (unused)
+ios/build-ipa.sh    LEGACY local macOS IPA build
+.github/workflows/  GitHub Actions Pages deployment + legacy IPA builder
 ```
 
-Vanilla HTML/CSS/JS with self-hosted fonts. No dependencies, no build, no network calls, no tracking.
+Vanilla HTML/CSS/JS with self-hosted fonts. No build step and no tracking. Live Google Fit sync and
+optional Cloud Link make network calls only when you explicitly use them.
 
 > **Not medical advice.** Recovery, strain and sleep figures are motivational estimates derived from
 > consumer wearable data. Listen to your body and consult a professional for health decisions.

@@ -196,7 +196,7 @@
       s.recovery >= 65 ? "OPTIMAL" :
       s.recovery >= 45 ? "MODERATE" : "DEPLETED";
     $("#recoveryDesc").textContent = s.recovery === null
-      ? "Sync Apple Watch data to calculate recovery from HRV, resting heart rate and sleep."
+      ? "Sync Google Fit data to calculate recovery from sleep, heart rate and body temperature."
       : "HRV " + (day.hrv || "—") + " ms · resting HR " + (day.rhr || "—") + " bpm · sleep " + (day.sleepHours || 0) + "h.";
     $("#recoverySpark").innerHTML = sparkline(dash.series.recovery, "#54ffc1", 100);
 
@@ -335,7 +335,7 @@
     $("#gateCount").textContent = list.length + " RECORDS";
 
     if (!list.length) {
-      $("#gateList").innerHTML = `<div class="empty-list">NO GATES IN THIS WINDOW<br/><button class="btn btn-ghost btn-sm" data-view="link">SYNC APPLE WATCH</button></div>`;
+      $("#gateList").innerHTML = `<div class="empty-list">NO GATES IN THIS WINDOW<br/><button class="btn btn-ghost btn-sm" data-view="link">SYNC GOOGLE FIT</button></div>`;
       return;
     }
 
@@ -436,9 +436,9 @@
      --------------------------------------------------------- */
   function renderLink(state, dash) {
     const imp = state.lastImport;
-    const native = !!window.ARISE_NATIVE;
-    const hk = window.ARISE_HK_STATUS || {};
-    const live = !!imp || native;
+    const fit = window.SystemFit ? window.SystemFit.status() : null;
+    const fitLive = !!(fit && (fit.authorized || fit.lastSyncAt));
+    const live = !!imp || fitLive;
     const chip = $("#linkChip");
     const syncChip = $("#syncChip");
     const stateEl = $("#linkState");
@@ -449,12 +449,14 @@
     [chip, syncChip, stateEl].forEach((el) => {
       if (el) el.classList.toggle("is-live", live);
     });
-    if (linkChipText) linkChipText.textContent = native ? "HEALTHKIT LINK" : live ? "ARCHIVE LINKED" : "AWAITING SYNC";
-    if (syncChipText) syncChipText.textContent = native ? "HEALTHKIT LIVE" : live ? "ARCHIVE SYNCED" : "AWAITING SYNC";
-    if (label) label.textContent = native ? "HEALTHKIT LIVE" : live ? "ARCHIVE LINKED" : "SIGNAL LOST";
+    if (linkChipText) linkChipText.textContent = fit && fit.syncing ? "FIT SYNCING" : fitLive ? "GOOGLE FIT LINK" : live ? "ARCHIVE LINKED" : "AWAITING SYNC";
+    if (syncChipText) syncChipText.textContent = fit && fit.syncing ? "FIT SYNCING" : fitLive ? "GOOGLE FIT LIVE" : live ? "ARCHIVE SYNCED" : "AWAITING SYNC";
+    if (label) label.textContent = fitLive ? "GOOGLE FIT LIVE" : live ? "ARCHIVE LINKED" : "SIGNAL LOST";
 
-    $("#linkStatusText").textContent = native
-      ? (hk.syncing ? "SYNCING" : hk.authorized ? "LIVE" : hk.message ? "DENIED" : "CONNECTING")
+    $("#linkStatusText").textContent = fit && fit.syncing ? "SYNCING"
+      : fit && fit.authorized ? "LIVE"
+      : fit && fit.lastError ? "ERROR"
+      : fit && fit.lastSyncAt ? "LINKED"
       : live ? "SYNCED" : "STANDBY";
     $("#lastSyncText").textContent = D.fmtDateTime(state.lastSync);
     $("#linkSourceText").textContent = imp ? imp.source : "—";
@@ -471,32 +473,32 @@
     const status = $("#importStatus");
     if (status) {
       status.classList.toggle("is-live", live);
-      if (native) {
-        const ok = hk.authorized;
-        status.innerHTML = `<div class="import-status-mark">${ok ? "✓" : "!"}</div><div>
-             <strong>HEALTHKIT ${esc(hk.syncing ? "SYNCING" : ok ? "CONNECTED" : "UNAVAILABLE")}</strong>
-             <p>${esc(hk.message || (ok
-               ? "Readings from your Apple Watch refresh automatically on this device. All processing stays local."
-               : "Grant access under Settings → Privacy & Security → Health, or import an Apple Health archive below."))}</p>
+      if (fit && fit.lastError) {
+        status.innerHTML = `<div class="import-status-mark">!</div><div>
+             <strong>GOOGLE FIT ERROR</strong>
+             <p>${esc(fit.lastError)}</p>
+           </div>`;
+      } else if (fit && fit.authorized) {
+        status.innerHTML = `<div class="import-status-mark">✓</div><div>
+             <strong>GOOGLE FIT CONNECTED</strong>
+             <p>Authorized for this browser session. Press SYNC GOOGLE FIT to refresh the archive.</p>
+           </div>`;
+      } else if (imp) {
+        status.innerHTML = `<div class="import-status-mark">✓</div><div>
+             <strong>ARCHIVE ACTIVE · ${imp.days} DAYS · ${imp.workouts} GATES</strong>
+             <p>${esc(imp.filename || "health archive")} processed locally. Scores recalculated from ${D.fmtShort(imp.rangeStart || dash.activeKey)}${imp.rangeEnd ? " – " + D.fmtShort(imp.rangeEnd) : ""}.</p>
+           </div>`;
+      } else if (fit && fit.lastSyncAt) {
+        status.innerHTML = `<div class="import-status-mark">✓</div><div>
+             <strong>GOOGLE FIT LINKED</strong>
+             <p>Authorization is session-only. Press SYNC GOOGLE FIT to refresh your archive.</p>
            </div>`;
       } else {
-        status.innerHTML = live
-          ? `<div class="import-status-mark">✓</div><div>
-               <strong>ARCHIVE ACTIVE · ${imp.days} DAYS · ${imp.workouts} GATES</strong>
-               <p>${esc(imp.filename || "health archive")} processed locally. Scores recalculated from ${D.fmtShort(imp.rangeStart || dash.activeKey)}${imp.rangeEnd ? " – " + D.fmtShort(imp.rangeEnd) : ""}.</p>
-             </div>`
-          : `<div class="import-status-mark">!</div><div>
-               <strong>NO ARCHIVE DETECTED</strong>
-               <p>Import at least one day of Apple Watch data to initialize scores, stats and quests.</p>
-             </div>`;
+        status.innerHTML = `<div class="import-status-mark">!</div><div>
+             <strong>NO ARCHIVE DETECTED</strong>
+             <p>Connect Google Fit above, or import at least one day of health data to initialize scores, stats and quests.</p>
+           </div>`;
       }
-    }
-
-    if (native) {
-      const pick = $("#pickFile");
-      const empty = $("#emptySync");
-      if (pick) pick.textContent = "SYNC HEALTHKIT";
-      if (empty) empty.textContent = "SYNC HEALTHKIT";
     }
 
     const metrics = imp && imp.metrics ? imp.metrics : [];

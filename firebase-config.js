@@ -15,6 +15,10 @@
     appId: "1:1013456010911:web:cf92102ec2a33d83636caa",
 
     // Public Google Identity Services client ID for the Sign in with Google button.
-    googleClientId: "1013456010911-siqtovnrctmjods5ei50bf89qper5lv7.apps.googleusercontent.com"
+    googleClientId: "1013456010911-siqtovnrctmjods5ei50bf89qper5lv7.apps.googleusercontent.com",
+
+    // OAuth client used for Google Fit reads. Must belong to a legacy project
+    // that already has the Fitness API enabled. Falls back to googleClientId.
+    fitClientId: "1013456010911-siqtovnrctmjods5ei50bf89qper5lv7.apps.googleusercontent.com"
   };
 })();

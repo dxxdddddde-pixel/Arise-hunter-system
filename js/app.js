@@ -9,6 +9,7 @@
   const T = window.SystemTraining;
   const B = window.SystemBody;
   const C = window.SystemCloud;
+  const F = window.SystemFit;
   const $ = (sel) => document.querySelector(sel);
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -18,20 +19,6 @@
   let booted = false;
 
   const VIEWS = ["status", "gates", "quests", "training", "body", "army", "link"];
-
-  /* Native iOS shell (WKWebView) bridge. In the browser these are inert. */
-  const NATIVE = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ariseBridge);
-  window.ARISE_NATIVE = NATIVE;
-  window.ARISE_HK_STATUS = { available: false, authorized: false, syncing: false, message: "" };
-
-  function nativePost(type, data) {
-    if (!NATIVE) return;
-    try {
-      window.webkit.messageHandlers.ariseBridge.postMessage(
-        data === undefined ? { type } : { type, data }
-      );
-    } catch (err) { /* bridge unavailable */ }
-  }
 
   /* ---------------------------------------------------------
      audio
@@ -208,37 +195,25 @@
     return ok;
   }
 
-  /* Apply a live snapshot pushed by the native HealthKit shell. */
-  function applyNativeSnapshot(snapshot) {
+  /* Apply a live snapshot from Google Fit through the shared import pipeline. */
+  function applyLiveSnapshot(snapshot) {
     let result;
     try {
       result = D.buildLiveResult(snapshot);
     } catch (err) {
-      console.error("ARISE HealthKit snapshot failed", err);
-      UI.toast("error", "SNAPSHOT FAILED", err && err.message ? err.message : "HealthKit returned an unreadable snapshot.");
-      return;
+      console.error("ARISE live snapshot failed", err);
+      UI.toast("error", "SNAPSHOT FAILED", err && err.message ? err.message : "The live source returned an unreadable snapshot.");
+      return false;
     }
     if (!Object.keys(result.days).length && !result.workouts.length) {
-      UI.toast("warn", "NO NEW DATA", "HealthKit has no records for the requested window yet.");
-      return;
+      UI.toast("warn", "NO NEW DATA", "Google Fit has no records for the requested window yet.");
+      return false;
     }
-    const before = D.levelInfo(D.totalXp(state)).level;
-    state = D.applyImport(state, result);
-    persist();
-    UI.render(state);
-    UI.setView("status");
-    UI.toast(
-      "success",
-      "HEALTHKIT SYNCED",
-      result.meta.days + " days · " + result.meta.workouts + " gates · through " + D.fmtShort(result.meta.rangeEnd || D.todayKey())
-    );
-    UI.addLog(
-      state,
-      "good",
-      "HealthKit live sync: " + result.meta.days + " days, " + result.meta.workouts + " gates, " + result.meta.records + " records."
-    );
-    sfx.confirm();
-    levelUpIfNeeded(before, "HealthKit");
+    if (Object.keys(state.days).length > 0) {
+      askReplace(result, (incoming) => commitResult(incoming, false, true));
+      return false;
+    }
+    return commitResult(result, false, true);
   }
 
   function levelUpIfNeeded(before, sourceText) {
@@ -264,41 +239,43 @@
     return { range, text: m.days + " days · " + m.workouts + " gates · " + range };
   }
 
-  function askReplace(result) {
+  function askReplace(result, onConfirm) {
     const oldDays = Object.keys(state.days).length;
     const oldGates = (state.workouts || []).length;
     const summary = summarize(result);
+    const confirm = typeof onConfirm === "function" ? onConfirm : (incoming) => commitResult(incoming, false);
     UI.openModal({
       title: "Replace Active Archive?",
       body: `<p>An existing archive holds <strong>${oldDays} days</strong> and <strong>${oldGates} gates</strong>.</p>
-             <p>The incoming file <strong>${UI.escape(result.meta.filename || "health archive")}</strong> contains <strong>${summary.text}</strong>.</p>
+             <p>The incoming archive <strong>${UI.escape(result.meta.filename || "health archive")}</strong> contains <strong>${summary.text}</strong>.</p>
              <p>Importing will overwrite movement, sleep and workout history. Your hunter identity, claimed quest XP and preferences are preserved.</p>`,
       actions: [
         { label: "CANCEL" },
-        { label: "REPLACE ARCHIVE", kind: "primary", onClick: () => commitResult(result, false) }
+        { label: "REPLACE ARCHIVE", kind: "primary", onClick: () => { confirm(result); } }
       ]
     });
   }
 
-  function commitResult(result, demo) {
+  function commitResult(result, demo, live) {
     const before = D.levelInfo(D.totalXp(state)).level;
     state = D.applyImport(state, result);
     persist();
     UI.render(state);
     UI.setView("status");
     const summary = summarize(result);
-    UI.toast(
-      "success",
-      demo ? "SIMULATION LOADED" : "ARCHIVE SYNCED",
-      summary.text + (demo ? " · demo data" : "")
-    );
+    const source = String(result.meta.source || "Health archive");
+    const label = demo ? "SIMULATION LOADED" : live ? source.toUpperCase() + " SYNCED" : "ARCHIVE SYNCED";
+    UI.toast("success", label, summary.text + (demo ? " · demo data" : ""));
     UI.addLog(
       state,
       "good",
-      (demo ? "Demo archive loaded" : "Apple Health archive synced") + ": " + result.meta.days + " days, " + result.meta.workouts + " gates, " + result.meta.records + " records."
+      (demo ? "Demo archive loaded" : live ? source + " live sync" : source + " archive synced") +
+        ": " + result.meta.days + " days, " + result.meta.workouts + " gates, " + result.meta.records + " records."
     );
+    if (live && F && typeof F.markSynced === "function") F.markSynced(state.cloud && state.cloud.email);
     sfx.confirm();
-    levelUpIfNeeded(before, demo ? "simulation" : "sync");
+    levelUpIfNeeded(before, demo ? "simulation" : live ? source : "sync");
+    return true;
   }
 
   async function handleFile(file) {
@@ -354,7 +331,7 @@
     if (Object.keys(state.days).length > 0) {
       UI.openModal({
         title: "Load Simulated Archive?",
-        body: `<p>This loads 40 days of realistic Apple Watch data so you can preview the full interface.</p>
+        body: `<p>This loads 40 days of realistic health data so you can preview the full interface.</p>
                <p>Your current archive will be <strong>replaced</strong>. Identity and quest bonuses are preserved. You can re-import your real data at any time.</p>`,
         actions: [
           { label: "CANCEL" },
@@ -613,33 +590,18 @@
 
     $("#syncBtn").addEventListener("click", () => {
       UI.setView("link");
-      if (NATIVE) nativePost("sync");
+      if (F) F.sync();
       else setTimeout(() => $("#fileInput").click(), 120);
     });
 
-    $("#pickFile").addEventListener("click", () => {
-      if (NATIVE) nativePost("sync");
-      else $("#fileInput").click();
-    });
+    $("#pickFile").addEventListener("click", () => $("#fileInput").click());
 
     $("#demoBtn").addEventListener("click", startDemo);
     $("#emptyDemo").addEventListener("click", startDemo);
     $("#emptySync").addEventListener("click", () => {
       UI.setView("link");
-      if (NATIVE) nativePost("sync");
-    });
-
-    window.addEventListener("arise:state-changed", () => nativePost("state", JSON.stringify(state)));
-    window.addEventListener("arise:snapshot", (e) => applyNativeSnapshot(e.detail));
-    window.addEventListener("arise:status", (e) => {
-      const status = e.detail || {};
-      window.ARISE_HK_STATUS = {
-        available: !!status.available,
-        authorized: !!status.authorized,
-        syncing: !!status.syncing,
-        message: status.message || ""
-      };
-      UI.render(state);
+      if (F) F.sync();
+      else $("#fileInput").click();
     });
 
     $("#gateFilters").addEventListener("click", (e) => {
@@ -676,14 +638,12 @@
     if (dropzone) {
       dropzone.addEventListener("click", (e) => {
         if (e.target.closest("button")) return;
-        if (NATIVE) nativePost("sync");
-        else $("#fileInput").click();
+        $("#fileInput").click();
       });
       dropzone.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          if (NATIVE) nativePost("sync");
-          else $("#fileInput").click();
+          $("#fileInput").click();
         }
       });
       ["dragenter", "dragover"].forEach((name) => {
@@ -762,7 +722,6 @@
       msg: hasData ? "Archive restored. Status window recalculated." : "System online. Awaiting a biometric archive."
     }];
     D.saveState(state);
-    nativePost("state", JSON.stringify(state));
   }
 
   function init() {
@@ -773,16 +732,18 @@
       setState: (next) => { state = next; },
       commit: () => { persist(); UI.render(state); },
       persist: (source) => persist(source),
+      render: () => UI.render(state),
+      applySnapshot: applyLiveSnapshot,
       sfx: () => sfx.confirm()
     };
     if (T) T.mount(moduleContext);
     if (B) B.mount(moduleContext);
     if (C) C.mount(moduleContext);
+    if (F) F.mount(moduleContext);
     UI.render(state);
     persist();
     bindEvents();
     lockViewport();
-    nativePost("ready");
 
     const hash = (location.hash || "").replace(/^#/, "");
     if (VIEWS.indexOf(hash) !== -1) UI.setView(hash);
@@ -794,7 +755,7 @@
 
     if (!Object.keys(state.days).length) {
       setTimeout(() => {
-        UI.toast("warn", "AWAITING SYNC", "Import Apple Health data or load the demo archive to begin.");
+        UI.toast("warn", "AWAITING SYNC", "Connect Google Fit or import a health archive to begin.");
       }, 2200);
     }
   }

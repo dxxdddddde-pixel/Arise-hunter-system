@@ -1,6 +1,6 @@
 /* =========================================================
    ARISE // data core
-   Storage, Apple Health parsing, scoring and game systems.
+   Storage, health data parsing, scoring and game systems.
    Runs entirely client-side. No data leaves the browser.
    ========================================================= */
 (function () {
@@ -493,7 +493,7 @@
     const out = [];
     const s = dash.scores;
     if (!dash.hasData) {
-      out.push({ tone: "warn", text: "<strong>No archive detected.</strong> The System requires Apple Watch data before it can evaluate your body." });
+      out.push({ tone: "warn", text: "<strong>No archive detected.</strong> The System requires health data before it can evaluate your body." });
       return out;
     }
     if (s.recovery !== null && s.recovery >= 78) {
@@ -848,7 +848,7 @@
     finalizeAcc(acc);
     const keys = Object.keys(acc.days).sort();
     if (!keys.length && !acc.workouts.length) {
-      throw new Error("No supported Apple Health records were found in this file.");
+      throw new Error("No supported health records were found in this data.");
     }
     const metrics = Object.keys(acc.counts).filter((k) => acc.counts[k] > 0);
     return {
@@ -1225,7 +1225,7 @@
      --------------------------------------------------------- */
   function buildLiveResult(snapshot) {
     if (!snapshot || typeof snapshot !== "object") {
-      throw new Error("Invalid HealthKit snapshot.");
+      throw new Error("Invalid live health snapshot.");
     }
     const acc = createAcc();
     const dayMap = snapshot.days || {};
@@ -1252,7 +1252,7 @@
         end: w.end || null,
         duration: w.duration,
         energy: w.energy,
-        source: w.source || "Apple Watch"
+        source: w.source || "Google Fit"
       });
     });
 
@@ -1267,8 +1267,8 @@
 
     return buildResult(
       acc,
-      snapshot.source || "Apple Watch · HealthKit",
-      snapshot.filename || "healthkit-live"
+      snapshot.source || "Google Fit",
+      snapshot.filename || "google-fit-live"
     );
   }
 
@@ -1364,7 +1364,7 @@
           start: new Date(date.getFullYear(), date.getMonth(), date.getDate(), 18, 10).toISOString(),
           duration: 52,
           energy: 392,
-          source: "Apple Watch"
+          source: "Demo Watch"
         });
         continue;
       }
@@ -1410,7 +1410,7 @@
           start: startDate.toISOString(),
           duration,
           energy,
-          source: "Apple Watch"
+          source: "Demo Watch"
         });
         if (Math.random() < 0.18) {
           const second = workoutPool[Math.floor(Math.random() * workoutPool.length)];
@@ -1420,7 +1420,7 @@
             start: new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour + 1, 30).toISOString(),
             duration: dur2,
             energy: Math.round(second.kcal * 0.6),
-            source: "Apple Watch"
+            source: "Demo Watch"
           });
         }
       }

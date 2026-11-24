@@ -58,6 +58,8 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+[hidden] { display: none !important; }
+
 body::before {
   content: "";
   position: fixed;
@@ -1029,7 +1031,11 @@ a { color: var(--cyan); }
 
 /* ============ link ============ */
 .link-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(280px, .9fr); gap: 16px; align-items: start; }
+.link-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .link-side { display: flex; flex-direction: column; gap: 16px; }
+.fit-panel { padding-bottom: 18px; }
+.fit-actions .btn:disabled { opacity: 0.38; cursor: not-allowed; }
+.fit-actions .btn[hidden] { display: none; }
 .connect-panel { padding-bottom: 20px; }
 
 .dropzone {
@@ -1858,7 +1864,7 @@ a { color: var(--cyan); }
   .strength-layout { grid-template-columns: 1fr; }
   .strength-records { max-height: none; }
 
-  /* Native iOS shell: keep content clear of the notch / home indicator. */
+  /* Installed web app: keep content clear of the notch / home indicator. */
   @supports (padding: env(safe-area-inset-top)) {
     body {
       padding-top: env(safe-area-inset-top);
