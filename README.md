@@ -80,8 +80,11 @@ snapshots you can restore on any device.
 1. Go to [Firebase Console](https://console.firebase.google.com/) → **Add project**.
 2. Add a **Web app** (`</>`) to the project and copy its config values.
 3. Enable **Authentication → Sign-in method → Google**, then add your GitHub Pages domain
-   (`<username>.github.io`, or your custom domain) under **Authorized domains**.
-4. Create a **Cloud Firestore** database (start in production mode, then publish the rules below).
+   (`<username>.github.io`, or your custom domain) under **Firebase Authorized domains**.
+4. In **Google Cloud Console → APIs & Services → Credentials**, open the Web OAuth client for this
+   project (or create one) and add this exact **Authorized JavaScript origin**:
+   `https://dxxdddddde-pixel.github.io`. Copy its **Client ID**.
+5. Create a **Cloud Firestore** database (start in production mode, then publish the rules below).
    Cloud Storage is not needed, so the app works on the free Spark plan.
 
 ### 2. Add your config
@@ -93,11 +96,13 @@ window.ARISE_FIREBASE_CONFIG = {
   apiKey: "AIza...",
   authDomain: "your-project.firebaseapp.com",
   projectId: "your-project",
-  appId: "1:123456789:web:abcdef"
+  appId: "1:123456789:web:abcdef",
+  googleClientId: "123456789-abc.apps.googleusercontent.com"
 };
 ```
 
-The API key is public by design. Access is controlled by the security rules, not by hiding it.
+The API key and OAuth client ID are public by design. Access is controlled by the security rules, not
+by hiding them. The `googleClientId` must be from the same Google Cloud project as the Firebase app.
 
 ### 3. Publish security rules
 
@@ -116,8 +121,9 @@ service cloud.firestore {
 
 ### 4. Use it
 
-- Open **Data Link → Cloud Link → SIGN IN WITH GOOGLE**. A redirect is used instead of a popup so it
-  works reliably in Safari on iPhone.
+- Open **Data Link → Cloud Link** and use the **Sign in with Google** button. It returns an ID token
+  directly to the page, avoiding Firebase's third-party auth redirect handler that Safari ITP blocks.
+  If the Google library cannot load, the app falls back to the standard Firebase redirect.
 - After changes, the archive uploads automatically about **15 seconds** after the last edit.
 - **SYNC NOW**, **UPLOAD TO CLOUD** and **DOWNLOAD FROM CLOUD** are available for manual control.
 - Snapshots are split into Firestore document chunks and stored under

@@ -15,7 +15,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="assets/fonts.css" />
-  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="stylesheet" href="styles.css?v=8" />
 </head>
 <body data-rank="E">
   <canvas id="fx" aria-hidden="true"></canvas>
@@ -820,6 +820,7 @@
                 <p class="cloud-note" id="cloudNote">Add your Firebase web config to firebase-config.js, then reload.</p>
                 <div class="link-actions cloud-actions">
                   <button class="btn btn-primary btn-sm" id="cloudSignIn">SIGN IN WITH GOOGLE</button>
+                  <div class="cloud-google-button" id="cloudGoogleButton" hidden></div>
                   <button class="btn btn-ghost btn-sm" id="cloudSyncNow">SYNC NOW</button>
                   <button class="btn btn-ghost btn-sm" id="cloudDownload">DOWNLOAD FROM CLOUD</button>
                   <button class="btn btn-ghost btn-sm" id="cloudUpload">UPLOAD TO CLOUD</button>
@@ -1094,12 +1095,13 @@
   <input type="file" id="fileInput" accept=".xml,.json,.zip,application/json,application/xml,application/zip" hidden />
   <input type="file" id="backupInput" accept=".json,application/json" hidden />
 
-  <script src="firebase-config.js?v=7"></script>
-  <script src="js/data.js?v=7"></script>
-  <script src="js/ui.js?v=7"></script>
-  <script src="js/training.js?v=7"></script>
-  <script src="js/body.js?v=7"></script>
-  <script src="js/cloud.js?v=7"></script>
-  <script src="js/app.js?v=7"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="firebase-config.js?v=8"></script>
+  <script src="js/data.js?v=8"></script>
+  <script src="js/ui.js?v=8"></script>
+  <script src="js/training.js?v=8"></script>
+  <script src="js/body.js?v=8"></script>
+  <script src="js/cloud.js?v=8"></script>
+  <script src="js/app.js?v=8"></script>
 </body>
 </html>

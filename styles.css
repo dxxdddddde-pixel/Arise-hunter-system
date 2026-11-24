@@ -1134,6 +1134,9 @@ a { color: var(--cyan); }
 .cloud-note { margin-top: 10px; font-size: 0.72rem; color: var(--muted); line-height: 1.5; }
 .cloud-actions { margin-top: 11px; }
 .cloud-actions .btn:disabled { opacity: 0.38; cursor: not-allowed; }
+.cloud-google-button { display: flex; align-items: center; justify-content: center; min-height: 40px; max-width: 100%; }
+.cloud-google-button[hidden] { display: none; }
+.cloud-google-button > div { max-width: 100%; }
 #cloudUser, #cloudPending { font-size: 0.62rem; overflow-wrap: anywhere; }
 .install-panel { border-color: rgba(53, 214, 255, 0.24); background: rgba(6, 18, 30, 0.34); }
 .install-panel .method { padding: 9px 0; }

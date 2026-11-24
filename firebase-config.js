@@ -12,6 +12,9 @@
     apiKey: "AIzaSyBlisDjd2v_SwunsbV2CeVvKptPT0Fqpc0",
     authDomain: "arise-hunter-system-a118f.firebaseapp.com",
     projectId: "arise-hunter-system-a118f",
-    appId: "1:1013456010911:web:cf92102ec2a33d83636caa"
+    appId: "1:1013456010911:web:cf92102ec2a33d83636caa",
+
+    // Public Google Identity Services client ID for the Sign in with Google button.
+    googleClientId: "1013456010911-siqtovnrctmjods5ei50bf89qper5lv7.apps.googleusercontent.com"
   };
 })();

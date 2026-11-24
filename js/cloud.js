@@ -27,6 +27,10 @@
   let syncing = false;
   let reconciled = false;
   let restoringSession = false;
+  let googleClientId = "";
+  let googleReady = false;
+  let googleChecked = false;
+  let googlePromptTimer = null;
 
   function ensure(state) {
     if (!state.cloud || typeof state.cloud !== "object") state.cloud = {};
@@ -51,6 +55,33 @@
     return configured;
   }
 
+  function getGoogleClientId() {
+    const cfg = window.ARISE_FIREBASE_CONFIG || {};
+    const id = String(cfg.googleClientId || "").trim();
+    return id && !/^(YOUR|PASTE|ADD)_/i.test(id) ? id : "";
+  }
+
+  function waitForGoogleIdentity(timeoutMs) {
+    if (window.google && window.google.accounts && window.google.accounts.id) {
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      const started = Date.now();
+      const tick = () => {
+        if (window.google && window.google.accounts && window.google.accounts.id) {
+          resolve(true);
+          return;
+        }
+        if (Date.now() - started >= timeoutMs) {
+          resolve(false);
+          return;
+        }
+        setTimeout(tick, 100);
+      };
+      tick();
+    });
+  }
+
   function firebaseErrorInfo(err) {
     const code = err && err.code ? String(err.code) : "";
     const message = err && err.message ? String(err.message) : "Unknown Firebase error.";
@@ -67,6 +98,12 @@
       hint = "Safari is blocking Firebase storage. Allow cross-site cookies for this site.";
     } else if (code === "auth/session-lost") {
       hint = "Safari likely blocked the Firebase redirect session. Allow cross-site cookies or use a custom auth domain.";
+    } else if (code === "auth/id-token-expired" || code === "auth/invalid-id-token" || code === "auth/invalid-credential") {
+      hint = "The Google credential expired or was rejected. Try signing in again.";
+    } else if (code === "auth/account-exists-with-different-credential") {
+      hint = "That email is already linked to another sign-in method for this project.";
+    } else if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+      hint = "The Google window closed before sign-in finished. Try again.";
     }
     return {
       code,
@@ -601,6 +638,100 @@
     scheduleSync();
   }
 
+  async function prepareGoogleSignIn() {
+    googleClientId = getGoogleClientId();
+    if (!googleClientId || !isConfigured()) {
+      googleChecked = true;
+      render();
+      return;
+    }
+
+    const ready = await waitForGoogleIdentity(6000);
+    if (!ready) {
+      googleChecked = true;
+      render();
+      return;
+    }
+
+    try {
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: handleGoogleCredential,
+        ux_mode: "popup",
+        itp_support: true,
+        auto_select: false,
+        cancel_on_tap_outside: true
+      });
+      googleReady = true;
+    } catch (err) {
+      console.warn("ARISE: Google Identity Services unavailable", err);
+      googleReady = false;
+    } finally {
+      googleChecked = true;
+      render();
+    }
+  }
+
+  function mountGoogleButton() {
+    const host = $("#cloudGoogleButton");
+    if (!host || !googleReady || !auth || user) return;
+
+    host.hidden = false;
+    if (host.dataset.rendered === "1" && host.childElementCount) return;
+
+    host.innerHTML = "";
+    try {
+      window.google.accounts.id.renderButton(host, {
+        type: "standard",
+        theme: "outline_dark",
+        size: "large",
+        text: "signin_with",
+        shape: "rectangular",
+        logo_alignment: "left",
+        width: "300",
+        state: "cloud-link",
+        click_listener: () => {
+          clearTimeout(googlePromptTimer);
+          googlePromptTimer = setTimeout(() => {
+            if (!user) UI.toast("warn", "WAITING FOR GOOGLE", "Finish the Google window, then return here.");
+          }, 6000);
+        }
+      });
+      host.dataset.rendered = "1";
+    } catch (err) {
+      host.hidden = true;
+      googleReady = false;
+      console.warn("ARISE: Google button render failed", err);
+    }
+  }
+
+  async function handleGoogleCredential(response) {
+    clearTimeout(googlePromptTimer);
+    if (!response || !response.credential) {
+      handleCloudError("GOOGLE SIGN-IN FAILED", new Error("Google did not return a credential."), true);
+      return;
+    }
+    if (!auth) {
+      handleCloudError("GOOGLE SIGN-IN FAILED", new Error("Firebase is not ready yet. Try again."), true);
+      return;
+    }
+
+    const state = ctx.getState();
+    ensure(state).lastError = null;
+    D.saveState(state);
+    render();
+
+    try {
+      const credential = firebase.auth.GoogleAuthProvider.credential(response.credential);
+      const result = await auth.signInWithCredential(credential);
+      const signedIn = (result && result.user) || auth.currentUser;
+      UI.toast("success", "GOOGLE LINKED", "Cloud Link connected to " +
+        ((signedIn && (signedIn.email || signedIn.uid)) || "your Google account") + ".");
+    } catch (err) {
+      handleCloudError("GOOGLE SIGN-IN FAILED", err, true);
+    }
+  }
+
   function signIn() {
     if (!configured || !auth) {
       UI.toast("warn", "FIREBASE SETUP REQUIRED", "Add your Firebase web config to firebase-config.js first.");
@@ -662,7 +793,18 @@
       body: "<p>Local data stays on this device. Automatic upload stops until you sign in again.</p>",
       actions: [
         { label: "CANCEL" },
-        { label: "SIGN OUT", kind: "danger", onClick: () => auth && auth.signOut() }
+        {
+          label: "SIGN OUT",
+          kind: "danger",
+          onClick: () => {
+            clearTimeout(googlePromptTimer);
+            if (googleReady && window.google && window.google.accounts && window.google.accounts.id &&
+                typeof window.google.accounts.id.disableAutoSelect === "function") {
+              try { window.google.accounts.id.disableAutoSelect(); } catch (err) { /* ignore */ }
+            }
+            if (auth) auth.signOut();
+          }
+        }
       ]
     });
   }
@@ -695,6 +837,9 @@
     } else if (restoringSession && !user) {
       label = "RESTORING SIGN-IN";
       detail = "Checking your Google sign-in result…";
+    } else if (!googleChecked && !user) {
+      label = "PREPARING SIGN-IN";
+      detail = "Loading Google sign-in…";
     } else if (user) {
       if (state.cloud.syncing) label = "SYNCING";
       else if (state.cloud.lastError) label = "SYNC ERROR";
@@ -723,8 +868,16 @@
     setDisabled("#cloudUpload", !canSync);
     const signInBtn = $("#cloudSignIn");
     const signOutBtn = $("#cloudSignOut");
-    if (signInBtn) signInBtn.hidden = !!user;
+    const googleBtn = $("#cloudGoogleButton");
+    const useGoogleButton = !!auth && googleReady;
+    const showFallback = configured && !!auth && !user && googleChecked && !useGoogleButton;
+
+    if (signInBtn) signInBtn.hidden = !showFallback;
     if (signOutBtn) signOutBtn.hidden = !user;
+    if (googleBtn) {
+      googleBtn.hidden = !!user || !useGoogleButton;
+      if (!googleBtn.hidden) mountGoogleButton();
+    }
   }
 
   function bindStatic() {
@@ -755,14 +908,17 @@
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden" && user && ctx.getState().cloud.dirty) syncNow(false);
     });
-    initFirebase().catch((err) => {
-      const state = ctx.getState();
-      const c = ensure(state);
-      c.lastError = err && err.message ? err.message : "Firebase setup failed.";
-      D.saveState(state);
-      render();
-      UI.toast("warn", "CLOUD LINK OFFLINE", c.lastError);
-    });
+    initFirebase()
+      .catch((err) => {
+        const state = ctx.getState();
+        const c = ensure(state);
+        c.lastError = err && err.message ? err.message : "Firebase setup failed.";
+        D.saveState(state);
+        render();
+        UI.toast("warn", "CLOUD LINK OFFLINE", c.lastError);
+      })
+      .then(() => prepareGoogleSignIn())
+      .catch((err) => console.warn("ARISE: Google sign-in setup failed", err));
   }
 
   window.SystemCloud = { mount, render, syncNow, downloadFromCloud, uploadToCloud };
