@@ -544,6 +544,28 @@
   }
 
   /* ---------------------------------------------------------
+     viewport lock (installed iPhone app)
+     --------------------------------------------------------- */
+  function lockViewport() {
+    const cancel = (e) => {
+      if (e && e.cancelable) e.preventDefault();
+    };
+
+    /* Safari proprietary pinch gestures. */
+    ["gesturestart", "gesturechange", "gestureend"].forEach((type) => {
+      document.addEventListener(type, cancel, { passive: false });
+    });
+
+    /* Multi-touch pinch on browsers that use touch events. */
+    document.addEventListener("touchmove", (e) => {
+      if (e.touches && e.touches.length > 1) cancel(e);
+    }, { passive: false });
+
+    /* Double-tap zoom. */
+    document.addEventListener("dblclick", cancel, { passive: false });
+  }
+
+  /* ---------------------------------------------------------
      events
      --------------------------------------------------------- */
   function bindEvents() {
@@ -759,6 +781,7 @@
     UI.render(state);
     persist();
     bindEvents();
+    lockViewport();
     nativePost("ready");
 
     const hash = (location.hash || "").replace(/^#/, "");

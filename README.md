@@ -57,6 +57,8 @@ for home-screen installation and offline caching.
 5. Launch **ARISE** from the home screen. It opens full-screen without Safari's address bar.
 6. Use the fixed bottom command deck to switch sections. Tap **MORE** for Quests, Shadow Army and
    Data Link.
+7. Pinch and double-tap zoom are disabled in the installed app. Notifications slide in from the right
+   edge at mid-screen, so they never cover the bottom command deck.
 
 The first visit needs an internet connection so the app shell can be cached. After that, `sw.js`
 serves the dashboard offline. Data is stored per device in Safari's site data unless you enable the

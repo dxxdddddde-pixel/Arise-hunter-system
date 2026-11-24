@@ -1,7 +1,7 @@
 /* ARISE // offline app shell. Works from a GitHub Pages subfolder. */
 "use strict";
 
-const CACHE = "arise-hunter-v5";
+const CACHE = "arise-hunter-v6";
 const SCOPE = self.registration.scope;
 const abs = (path) => new URL(path, SCOPE).href;
 
