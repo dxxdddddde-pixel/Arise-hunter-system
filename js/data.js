@@ -199,6 +199,12 @@
         reminder: { enabled: true, nextAt: null, lastPromptAt: null }
       },
       strength: { entries: [] },
+      health: {
+        lastSyncAt: null,
+        lastError: null,
+        email: null,
+        scopes: []
+      },
       cloud: {
         uid: null,
         email: null,
@@ -222,6 +228,12 @@
       training: s.training && typeof s.training === "object" ? s.training : null,
       body: s.body && typeof s.body === "object" ? s.body : base.body,
       strength: s.strength && typeof s.strength === "object" ? s.strength : base.strength,
+      health: (() => {
+        const saved = s.health && typeof s.health === "object"
+          ? s.health
+          : s.fit && typeof s.fit === "object" ? s.fit : null;
+        return saved ? { ...base.health, ...saved, scopes: Array.isArray(saved.scopes) ? saved.scopes : [] } : base.health;
+      })(),
       cloud: s.cloud && typeof s.cloud === "object" ? { ...base.cloud, ...s.cloud } : base.cloud,
       days: s.days && typeof s.days === "object" ? s.days : {},
       workouts: Array.isArray(s.workouts) ? s.workouts : [],
@@ -867,359 +879,6 @@
     };
   }
 
-  function parseAttrs(str) {
-    const out = {};
-    const re = /([A-Za-z0-9:_-]+)="([^"]*)"/g;
-    let m;
-    while ((m = re.exec(str))) out[m[1]] = m[2];
-    return out;
-  }
-
-  function durationMinutes(value, unit) {
-    const v = num(value);
-    const u = String(unit || "min").toLowerCase();
-    if (u === "sec" || u === "s" || u === "seconds") return v / 60;
-    if (u === "hr" || u === "h" || u === "hours") return v * 60;
-    return v;
-  }
-
-  function energyKcal(value, unit) {
-    const v = num(value);
-    const u = String(unit || "kcal").toLowerCase();
-    return u === "kj" ? v / 4.184 : v;
-  }
-
-  function parseAppleHealthXML(text, filename) {
-    const acc = createAcc();
-    const recordRe = /<Record\b([^>]*?)\/?>/g;
-    const workoutRe = /<Workout\b([^>]*?)\/?>/g;
-    let m;
-
-    while ((m = recordRe.exec(text))) {
-      const a = parseAttrs(m[1]);
-      const type = a.type || "";
-      if (!type || a.value === undefined) continue;
-      const start = parseDate(a.startDate);
-      if (!start) continue;
-      const key = keyOf(start);
-      const value = num(a.value);
-
-      if (type.indexOf("SleepAnalysis") !== -1) {
-        const end = parseDate(a.endDate) || start;
-        const hours = clamp((end.getTime() - start.getTime()) / 3600000, 0, 24);
-        if (!(hours > 0)) continue;
-        const d = accDay(acc, keyOf(end));
-        const v = String(a.value || "").toLowerCase();
-        if (v.indexOf("awake") !== -1) {
-          d.awakeHours += hours;
-        } else if (v.indexOf("inbed") !== -1 || v.indexOf("in_bed") !== -1) {
-          /* ignore in-bed spans */
-        } else if (v.indexOf("deep") !== -1) {
-          d.deepHours += hours;
-          d.sleepHours += hours;
-        } else if (v.indexOf("rem") !== -1) {
-          d.remHours += hours;
-          d.sleepHours += hours;
-        } else if (v.indexOf("asleep") !== -1 || v.indexOf("core") !== -1) {
-          d.coreHours += hours;
-          d.sleepHours += hours;
-        }
-        bumpCount(acc, "sleepHours");
-        acc.recordCount++;
-        continue;
-      }
-
-      const day = accDay(acc, key);
-      switch (type) {
-        case "HKQuantityTypeIdentifierStepCount":
-          day.steps += value; bumpCount(acc, "steps"); break;
-        case "HKQuantityTypeIdentifierActiveEnergyBurned":
-          day.activeEnergy += energyKcal(value, a.unit); bumpCount(acc, "activeEnergy"); break;
-        case "HKQuantityTypeIdentifierBasalEnergyBurned":
-          day.basalEnergy += energyKcal(value, a.unit); bumpCount(acc, "basalEnergy"); break;
-        case "HKQuantityTypeIdentifierAppleExerciseTime":
-          day.exerciseMinutes += value; bumpCount(acc, "exerciseMinutes"); break;
-        case "HKQuantityTypeIdentifierHeartRateVariabilitySDNN":
-          addAvg(day, "hrv", value); bumpCount(acc, "hrv"); break;
-        case "HKQuantityTypeIdentifierRestingHeartRate":
-          addAvg(day, "rhr", value); bumpCount(acc, "rhr"); break;
-        case "HKQuantityTypeIdentifierRespiratoryRate":
-          addAvg(day, "respiratory", value); bumpCount(acc, "respiratory"); break;
-        case "HKQuantityTypeIdentifierVO2Max":
-          addAvg(day, "vo2max", value); bumpCount(acc, "vo2max"); break;
-        case "HKQuantityTypeIdentifierAppleSleepingWristTemperature":
-          addAvg(day, "wristTemp", value); bumpCount(acc, "wristTemp"); break;
-        case "HKQuantityTypeIdentifierHeartRate":
-          addAvg(day, "hrAvg", value);
-          if (!day.hrMin || value < day.hrMin) day.hrMin = value;
-          if (!day.hrMax || value > day.hrMax) day.hrMax = value;
-          bumpCount(acc, "heartRate");
-          break;
-        default:
-          continue;
-      }
-      acc.recordCount++;
-    }
-
-    while ((m = workoutRe.exec(text))) {
-      const a = parseAttrs(m[1]);
-      if (!a.startDate) continue;
-      let dur = durationMinutes(a.duration, a.durationUnit);
-      if (!(dur > 0) && a.endDate) {
-        const s = parseDate(a.startDate);
-        const e = parseDate(a.endDate);
-        if (s && e) dur = (e.getTime() - s.getTime()) / 60000;
-      }
-      addWorkout(acc, {
-        rawName: a.workoutActivityType || a.type || "Workout",
-        start: a.startDate,
-        end: a.endDate,
-        duration: dur,
-        energy: energyKcal(a.totalEnergyBurned, a.totalEnergyBurnedUnit),
-        source: a.sourceName || "Apple Watch"
-      });
-    }
-
-    return buildResult(acc, "Apple Health", filename);
-  }
-
-  /* ---------------------------------------------------------
-     Health Auto Export JSON
-     --------------------------------------------------------- */
-  function normalizeMetricName(name) {
-    return String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  }
-
-  const HAE_MAP = {
-    stepcount: "steps", steps: "steps",
-    activeenergy: "activeEnergy", activeenergyburned: "activeEnergy", activeenergyburnedkcal: "activeEnergy",
-    basalenergyburned: "basalEnergy",
-    appleexercisetime: "exerciseMinutes", exercisetime: "exerciseMinutes", exercise: "exerciseMinutes",
-    heartratevariability: "hrv", hrv: "hrv", heartratevariabilitysdnn: "hrv",
-    restingheartrate: "rhr",
-    respiratoryrate: "respiratory",
-    vo2max: "vo2max",
-    applesleepingwristtemperature: "wristTemp", wristtemperature: "wristTemp",
-    heartrate: "heartRate"
-  };
-
-  function ingestSleepMetric(acc, item) {
-    (item.data || []).forEach((entry) => {
-      const date = parseDate(entry.date || entry.startDate || entry.start);
-      if (!date) return;
-      const d = accDay(acc, keyOf(date));
-      const units = String(item.units || entry.units || "hr").toLowerCase();
-      const scale = units === "min" || units === "minutes" ? 1 / 60 : units === "sec" ? 1 / 3600 : 1;
-
-      const stage = String(entry.value || entry.stage || entry.sleepStage || "").toLowerCase();
-      const explicitTotal = entry.totalSleep !== undefined || entry.asleep !== undefined || entry.sleep !== undefined;
-      const deepRaw = entry.deep !== undefined ? entry.deep : entry.deepSleep;
-      const remRaw = entry.rem !== undefined ? entry.rem : entry.remSleep;
-      const coreRaw = entry.core !== undefined ? entry.core : entry.coreSleep;
-      const awakeRaw = entry.awake !== undefined ? entry.awake : entry.awakeSleep;
-
-      // Stage-per-entry exports: value says "Deep"/"REM"/... and qty is hours in that stage.
-      if (stage && !explicitTotal && deepRaw === undefined && remRaw === undefined && coreRaw === undefined && awakeRaw === undefined) {
-        const h = num(entry.qty !== undefined ? entry.qty : entry.duration) * scale;
-        if (h > 0) {
-          if (stage.indexOf("deep") !== -1) d.deepHours += h;
-          else if (stage.indexOf("rem") !== -1) d.remHours += h;
-          else if (stage.indexOf("awake") !== -1) d.awakeHours += h;
-          else d.coreHours += h;
-        }
-        acc.recordCount++;
-        bumpCount(acc, "sleepHours");
-        return;
-      }
-
-      const total = num(explicitTotal ? (entry.totalSleep !== undefined ? entry.totalSleep : entry.asleep !== undefined ? entry.asleep : entry.sleep) : entry.qty) * scale;
-      const deep = num(deepRaw) * scale;
-      const rem = num(remRaw) * scale;
-      const core = num(coreRaw) * scale;
-      const awake = num(awakeRaw) * scale;
-
-      if (total > 0) d.sleepHours = Math.max(d.sleepHours, total);
-      if (deep > 0) d.deepHours = Math.max(d.deepHours, deep);
-      if (rem > 0) d.remHours = Math.max(d.remHours, rem);
-      if (core > 0) d.coreHours = Math.max(d.coreHours, core);
-      if (awake > 0) d.awakeHours = Math.max(d.awakeHours, awake);
-      acc.recordCount++;
-      bumpCount(acc, "sleepHours");
-    });
-  }
-
-  function parseHAEJson(json, filename) {
-    const acc = createAcc();
-    const root = json && json.data ? json.data : json;
-    if (root && typeof root === "object" && !Array.isArray(root) && (root.metrics || root.workouts)) {
-      const metrics = root.metrics || [];
-      metrics.forEach((item) => {
-        if (!item) return;
-        const norm = normalizeMetricName(item.name);
-        if (norm.indexOf("sleep") !== -1 && norm.indexOf("temperature") === -1) {
-          ingestSleepMetric(acc, item);
-          return;
-        }
-        const key = HAE_MAP[norm];
-        if (!key) return;
-        const units = String(item.units || "").toLowerCase();
-
-        (item.data || []).forEach((entry) => {
-          const date = parseDate(entry.date || entry.startDate || entry.start);
-          if (!date) return;
-          const day = accDay(acc, keyOf(date));
-          let value = num(entry.qty !== undefined ? entry.qty : (entry.value !== undefined ? entry.value : (entry.Avg !== undefined ? entry.Avg : entry.avg)));
-
-          if (key === "exerciseMinutes" && (units === "s" || units === "sec" || units === "seconds")) value /= 60;
-          if (key === "activeEnergy" && units === "kj") value /= 4.184;
-          if (key === "basalEnergy" && units === "kj") value /= 4.184;
-          if (!(value > 0)) return;
-
-          switch (key) {
-            case "steps": day.steps += value; break;
-            case "activeEnergy": day.activeEnergy += value; break;
-            case "basalEnergy": day.basalEnergy += value; break;
-            case "exerciseMinutes": day.exerciseMinutes += value; break;
-            case "hrv": addAvg(day, "hrv", value); break;
-            case "rhr": addAvg(day, "rhr", value); break;
-            case "respiratory": addAvg(day, "respiratory", value); break;
-            case "vo2max": addAvg(day, "vo2max", value); break;
-            case "wristTemp": addAvg(day, "wristTemp", value); break;
-            case "heartRate": addAvg(day, "hrAvg", value); break;
-            default: return;
-          }
-          bumpCount(acc, key);
-          acc.recordCount++;
-        });
-      });
-
-      (root.workouts || []).forEach((w) => {
-        if (!w) return;
-        const start = w.start || w.startDate;
-        const end = w.end || w.endDate;
-        let duration = num(w.duration);
-        if (duration > 600 && !(w.durationUnit && /min/i.test(w.durationUnit))) duration /= 60;
-        if (!(duration > 0) && start && end) {
-          const s = parseDate(start);
-          const e = parseDate(end);
-          if (s && e) duration = (e.getTime() - s.getTime()) / 60000;
-        }
-        const energyRaw = w.activeEnergy !== undefined ? w.activeEnergy
-          : (w.activeEnergyBurned !== undefined ? w.activeEnergyBurned
-            : (w.totalEnergy !== undefined ? w.totalEnergy : w.calories));
-        const energy = num(energyRaw);
-        addWorkout(acc, {
-          rawName: w.name || w.workoutActivityType || w.type || "Workout",
-          start,
-          end,
-          duration,
-          energy,
-          source: "Health Auto Export"
-        });
-      });
-
-      return buildResult(acc, "Health Auto Export", filename);
-    }
-
-    // Tolerate an array of metric objects.
-    if (Array.isArray(root)) {
-      const fake = { metrics: root, workouts: [] };
-      return parseHAEJson({ data: fake }, filename);
-    }
-
-    throw new Error("Unrecognized JSON structure. Use a Health Auto Export backup (metrics + workouts).");
-  }
-
-  /* ---------------------------------------------------------
-     ZIP reader (Apple Health export.zip)
-     --------------------------------------------------------- */
-  function findEntry(files) {
-    const pick = (re) => files.filter((f) => re.test(f.name)).sort((a, b) => b.uncompressed - a.uncompressed)[0];
-    return pick(/export\.xml$/i) || pick(/\.xml$/i);
-  }
-
-  async function extractZipXml(buffer) {
-    const dv = new DataView(buffer);
-    const u8 = new Uint8Array(buffer);
-    let eocd = -1;
-    const min = Math.max(0, u8.length - 66560);
-    for (let i = u8.length - 22; i >= min; i--) {
-      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
-    }
-    if (eocd < 0) throw new Error("This ZIP appears to be invalid or unsupported.");
-    const entries = dv.getUint16(eocd + 10, true);
-    let offset = dv.getUint32(eocd + 16, true);
-    const files = [];
-    for (let i = 0; i < entries; i++) {
-      if (dv.getUint32(offset, true) !== 0x02014b50) break;
-      const method = dv.getUint16(offset + 10, true);
-      const compressed = dv.getUint32(offset + 20, true);
-      const uncompressed = dv.getUint32(offset + 24, true);
-      const nameLen = dv.getUint16(offset + 28, true);
-      const extraLen = dv.getUint16(offset + 30, true);
-      const commentLen = dv.getUint16(offset + 32, true);
-      const localOffset = dv.getUint32(offset + 42, true);
-      const name = new TextDecoder().decode(u8.slice(offset + 46, offset + 46 + nameLen));
-      files.push({ name, method, compressed, uncompressed, localOffset });
-      offset += 46 + nameLen + extraLen + commentLen;
-    }
-    const chosen = findEntry(files);
-    if (!chosen) throw new Error("No health XML file was found inside this ZIP.");
-    if (chosen.compressed === 0xffffffff) throw new Error("ZIP64 archives are not supported. Please unzip and select export.xml.");
-
-    const lo = chosen.localOffset;
-    if (dv.getUint32(lo, true) !== 0x04034b50) throw new Error("Corrupt ZIP entry header.");
-    const nameLen = dv.getUint16(lo + 26, true);
-    const extraLen = dv.getUint16(lo + 28, true);
-    const start = lo + 30 + nameLen + extraLen;
-    let data = u8.slice(start, start + chosen.compressed);
-
-    if (chosen.method === 8) {
-      if (typeof DecompressionStream === "undefined") {
-        throw new Error("Your browser cannot unzip files. Unzip the archive and import export.xml directly.");
-      }
-      const ds = new DecompressionStream("deflate-raw");
-      const stream = new Blob([data]).stream().pipeThrough(ds);
-      data = new Uint8Array(await new Response(stream).arrayBuffer());
-    } else if (chosen.method !== 0) {
-      throw new Error("Unsupported ZIP compression. Please unzip and import export.xml.");
-    }
-    return new TextDecoder("utf-8").decode(data);
-  }
-
-  async function parseHealthFile(file) {
-    if (!file) throw new Error("No file selected.");
-    const name = (file.name || "health-archive").toLowerCase();
-
-    if (name.endsWith(".zip")) {
-      const buffer = await file.arrayBuffer();
-      const xml = await extractZipXml(buffer);
-      return parseAppleHealthXML(xml, file.name);
-    }
-
-    if (name.endsWith(".json")) {
-      const text = await file.text();
-      let json;
-      try {
-        json = JSON.parse(text);
-      } catch (err) {
-        throw new Error("The JSON file could not be parsed.");
-      }
-      return parseHAEJson(json, file.name);
-    }
-
-    const text = await file.text();
-    if (name.endsWith(".xml") || /<HealthData|<Record\b/i.test(text.slice(0, 4000))) {
-      return parseAppleHealthXML(text, file.name);
-    }
-
-    const trimmed = text.trim();
-    if (trimmed.charAt(0) === "{" || trimmed.charAt(0) === "[") {
-      return parseHAEJson(JSON.parse(trimmed), file.name);
-    }
-    throw new Error("Unsupported file. Import an Apple Health export.xml, export.zip, or Health Auto Export JSON.");
-  }
-
   /* ---------------------------------------------------------
      apply import
      --------------------------------------------------------- */
@@ -1252,7 +911,7 @@
         end: w.end || null,
         duration: w.duration,
         energy: w.energy,
-        source: w.source || "Google Fit"
+        source: w.source || "Google Health"
       });
     });
 
@@ -1267,8 +926,8 @@
 
     return buildResult(
       acc,
-      snapshot.source || "Google Fit",
-      snapshot.filename || "google-fit-live"
+      snapshot.source || "Google Health",
+      snapshot.filename || "google-health-live"
     );
   }
 
@@ -1449,7 +1108,6 @@
     levelInfo,
     rankInfo,
     totalXp,
-    parseHealthFile,
     buildLiveResult,
     applyImport,
     generateDemo,

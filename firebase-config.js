@@ -17,8 +17,13 @@
     // Public Google Identity Services client ID for the Sign in with Google button.
     googleClientId: "1013456010911-siqtovnrctmjods5ei50bf89qper5lv7.apps.googleusercontent.com",
 
-    // OAuth client used for Google Fit reads. Must belong to a legacy project
-    // that already has the Fitness API enabled. Falls back to googleClientId.
-    fitClientId: "1013456010911-siqtovnrctmjods5ei50bf89qper5lv7.apps.googleusercontent.com"
+    // Public OAuth client used for Google Health reads. The Google Health API
+    // must be enabled for this client, and its read scopes must be on the
+    // OAuth consent screen. Falls back to googleClientId when left empty.
+    healthClientId: "1013456010911-siqtovnrctmjods5ei50bf89qper5lv7.apps.googleusercontent.com",
+
+    // Exact URI registered under "Authorized redirect URIs" for the code flow.
+    // Leave empty to use the current page URL (GitHub Pages subfolder included).
+    healthRedirectUri: ""
   };
 })();

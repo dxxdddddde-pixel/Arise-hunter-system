@@ -9,7 +9,7 @@
   const T = window.SystemTraining;
   const B = window.SystemBody;
   const C = window.SystemCloud;
-  const F = window.SystemFit;
+  const H = window.SystemHealth;
   const $ = (sel) => document.querySelector(sel);
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -195,7 +195,7 @@
     return ok;
   }
 
-  /* Apply a live snapshot from Google Fit through the shared import pipeline. */
+  /* Apply a live snapshot from Google Health through the shared import pipeline. */
   function applyLiveSnapshot(snapshot) {
     let result;
     try {
@@ -206,7 +206,7 @@
       return false;
     }
     if (!Object.keys(result.days).length && !result.workouts.length) {
-      UI.toast("warn", "NO NEW DATA", "Google Fit has no records for the requested window yet.");
+      UI.toast("warn", "NO NEW DATA", "Google Health has no records for the requested window yet.");
       return false;
     }
     if (Object.keys(state.days).length > 0) {
@@ -272,39 +272,10 @@
       (demo ? "Demo archive loaded" : live ? source + " live sync" : source + " archive synced") +
         ": " + result.meta.days + " days, " + result.meta.workouts + " gates, " + result.meta.records + " records."
     );
-    if (live && F && typeof F.markSynced === "function") F.markSynced(state.cloud && state.cloud.email);
+    if (live && H && typeof H.markSynced === "function") H.markSynced(state.cloud && state.cloud.email);
     sfx.confirm();
     levelUpIfNeeded(before, demo ? "simulation" : live ? source : "sync");
     return true;
-  }
-
-  async function handleFile(file) {
-    if (!file) return;
-    if (busy) {
-      UI.toast("warn", "UPLINK BUSY", "A previous archive is still being processed.");
-      return;
-    }
-    busy = true;
-    UI.working(true, "DECRYPTING ARCHIVE");
-    await delay(80);
-
-    try {
-      const result = await D.parseHealthFile(file);
-      UI.working(false);
-      if (Object.keys(state.days).length > 0) {
-        askReplace(result);
-      } else {
-        commitResult(result, false);
-      }
-    } catch (err) {
-      console.error("ARISE import failed", err);
-      UI.working(false);
-      sfx.error();
-      UI.toast("error", "UPLINK FAILED", err && err.message ? err.message : "The archive could not be read.");
-      UI.addLog(state, "bad", "Import failed: " + (err && err.message ? err.message : "unknown error"));
-    } finally {
-      busy = false;
-    }
   }
 
   async function runDemo() {
@@ -332,7 +303,7 @@
       UI.openModal({
         title: "Load Simulated Archive?",
         body: `<p>This loads 40 days of realistic health data so you can preview the full interface.</p>
-               <p>Your current archive will be <strong>replaced</strong>. Identity and quest bonuses are preserved. You can re-import your real data at any time.</p>`,
+               <p>Your current archive will be <strong>replaced</strong>. Identity and quest bonuses are preserved. You can sync your Google Health data at any time.</p>`,
         actions: [
           { label: "CANCEL" },
           { label: "LOAD DEMO", kind: "primary", onClick: () => runDemo() }
@@ -412,7 +383,7 @@
     UI.openModal({
       title: "Purge Hunter Archive?",
       body: `<p>This deletes <strong>${days} days</strong> of metrics and <strong>${(state.workouts || []).length} gates</strong>, along with quest claims and local history.</p>
-             <p>Your identifier, audio preference, Training Grounds protocol and Body Log records are retained. This cannot be undone — export a backup first if you need one.</p>`,
+             <p>Your identifier, audio preference, Training Grounds protocol, Body Log records and link settings are retained. This cannot be undone — export a backup first if you need one.</p>`,
       actions: [
         { label: "CANCEL" },
         {
@@ -424,12 +395,16 @@
             const training = state.training;
             const body = state.body;
             const strength = state.strength;
+            const cloud = state.cloud;
+            const health = state.health;
             state = D.defaultState();
             state.hunter.name = name;
             state.sound = sound;
             state.training = training;
             state.body = body;
             state.strength = strength;
+            state.cloud = cloud;
+            state.health = health;
             state.logs = [];
             D.saveState(state);
             UI.render(state);
@@ -576,12 +551,6 @@
       if (btn) sfx.tick();
     });
 
-    $("#fileInput").addEventListener("change", (e) => {
-      const file = e.target.files && e.target.files[0];
-      e.target.value = "";
-      if (file) handleFile(file);
-    });
-
     $("#backupInput").addEventListener("change", (e) => {
       const file = e.target.files && e.target.files[0];
       e.target.value = "";
@@ -590,18 +559,14 @@
 
     $("#syncBtn").addEventListener("click", () => {
       UI.setView("link");
-      if (F) F.sync();
-      else setTimeout(() => $("#fileInput").click(), 120);
+      if (H) H.sync();
     });
-
-    $("#pickFile").addEventListener("click", () => $("#fileInput").click());
 
     $("#demoBtn").addEventListener("click", startDemo);
     $("#emptyDemo").addEventListener("click", startDemo);
     $("#emptySync").addEventListener("click", () => {
       UI.setView("link");
-      if (F) F.sync();
-      else $("#fileInput").click();
+      if (H) H.sync();
     });
 
     $("#gateFilters").addEventListener("click", (e) => {
@@ -632,49 +597,6 @@
     $("#modalClose").addEventListener("click", () => UI.closeModal());
     $("#modal").addEventListener("click", (e) => {
       if (e.target.id === "modal") UI.closeModal();
-    });
-
-    const dropzone = $("#dropzone");
-    if (dropzone) {
-      dropzone.addEventListener("click", (e) => {
-        if (e.target.closest("button")) return;
-        $("#fileInput").click();
-      });
-      dropzone.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          $("#fileInput").click();
-        }
-      });
-      ["dragenter", "dragover"].forEach((name) => {
-        dropzone.addEventListener(name, (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          dropzone.classList.add("is-drag");
-        });
-      });
-      ["dragleave", "dragend"].forEach((name) => {
-        dropzone.addEventListener(name, (e) => {
-          e.preventDefault();
-          dropzone.classList.remove("is-drag");
-        });
-      });
-      dropzone.addEventListener("drop", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dropzone.classList.remove("is-drag");
-        const file = e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files[0] : null;
-        if (file) handleFile(file);
-      });
-    }
-
-    ["dragover", "drop"].forEach((name) => {
-      window.addEventListener(name, (e) => {
-        if (e.target.closest && e.target.closest("#dropzone")) return;
-        if (e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf("Files") !== -1) {
-          e.preventDefault();
-        }
-      });
     });
 
     document.addEventListener("keydown", (e) => {
@@ -739,7 +661,7 @@
     if (T) T.mount(moduleContext);
     if (B) B.mount(moduleContext);
     if (C) C.mount(moduleContext);
-    if (F) F.mount(moduleContext);
+    if (H) H.mount(moduleContext);
     UI.render(state);
     persist();
     bindEvents();
@@ -755,7 +677,7 @@
 
     if (!Object.keys(state.days).length) {
       setTimeout(() => {
-        UI.toast("warn", "AWAITING SYNC", "Connect Google Fit or import a health archive to begin.");
+        UI.toast("warn", "AWAITING SYNC", "Connect Google Health or load a demo archive to begin.");
       }, 2200);
     }
   }

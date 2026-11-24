@@ -196,7 +196,7 @@
       s.recovery >= 65 ? "OPTIMAL" :
       s.recovery >= 45 ? "MODERATE" : "DEPLETED";
     $("#recoveryDesc").textContent = s.recovery === null
-      ? "Sync Google Fit data to calculate recovery from sleep, heart rate and body temperature."
+      ? "Sync Google Health data to calculate recovery from sleep, heart rate and body temperature."
       : "HRV " + (day.hrv || "—") + " ms · resting HR " + (day.rhr || "—") + " bpm · sleep " + (day.sleepHours || 0) + "h.";
     $("#recoverySpark").innerHTML = sparkline(dash.series.recovery, "#54ffc1", 100);
 
@@ -335,7 +335,7 @@
     $("#gateCount").textContent = list.length + " RECORDS";
 
     if (!list.length) {
-      $("#gateList").innerHTML = `<div class="empty-list">NO GATES IN THIS WINDOW<br/><button class="btn btn-ghost btn-sm" data-view="link">SYNC GOOGLE FIT</button></div>`;
+      $("#gateList").innerHTML = `<div class="empty-list">NO GATES IN THIS WINDOW<br/><button class="btn btn-ghost btn-sm" data-view="link">SYNC GOOGLE HEALTH</button></div>`;
       return;
     }
 
@@ -436,9 +436,9 @@
      --------------------------------------------------------- */
   function renderLink(state, dash) {
     const imp = state.lastImport;
-    const fit = window.SystemFit ? window.SystemFit.status() : null;
-    const fitLive = !!(fit && (fit.authorized || fit.lastSyncAt));
-    const live = !!imp || fitLive;
+    const health = window.SystemHealth ? window.SystemHealth.status() : null;
+    const healthLive = !!(health && (health.authorized || health.lastSyncAt));
+    const live = !!imp || healthLive;
     const chip = $("#linkChip");
     const syncChip = $("#syncChip");
     const stateEl = $("#linkState");
@@ -449,17 +449,31 @@
     [chip, syncChip, stateEl].forEach((el) => {
       if (el) el.classList.toggle("is-live", live);
     });
-    if (linkChipText) linkChipText.textContent = fit && fit.syncing ? "FIT SYNCING" : fitLive ? "GOOGLE FIT LINK" : live ? "ARCHIVE LINKED" : "AWAITING SYNC";
-    if (syncChipText) syncChipText.textContent = fit && fit.syncing ? "FIT SYNCING" : fitLive ? "GOOGLE FIT LIVE" : live ? "ARCHIVE SYNCED" : "AWAITING SYNC";
-    if (label) label.textContent = fitLive ? "GOOGLE FIT LIVE" : live ? "ARCHIVE LINKED" : "SIGNAL LOST";
+    if (linkChipText) {
+      linkChipText.textContent = health && health.syncing ? "HEALTH SYNCING"
+        : health && health.partial ? "PARTIAL HEALTH LINK"
+        : healthLive ? "GOOGLE HEALTH LINK"
+        : live ? "ARCHIVE LINKED" : "AWAITING SYNC";
+    }
+    if (syncChipText) {
+      syncChipText.textContent = health && health.syncing ? "HEALTH SYNCING"
+        : health && health.partial ? "PARTIAL HEALTH LINK"
+        : healthLive ? "GOOGLE HEALTH LIVE"
+        : live ? "ARCHIVE SYNCED" : "AWAITING SYNC";
+    }
+    if (label) {
+      label.textContent = health && health.partial ? "PARTIAL HEALTH LINK"
+        : healthLive ? "GOOGLE HEALTH LIVE"
+        : live ? "ARCHIVE LINKED" : "SIGNAL LOST";
+    }
 
-    $("#linkStatusText").textContent = fit && fit.syncing ? "SYNCING"
-      : fit && fit.authorized ? "LIVE"
-      : fit && fit.lastError ? "ERROR"
-      : fit && fit.lastSyncAt ? "LINKED"
+    $("#linkStatusText").textContent = health && health.syncing ? "SYNCING"
+      : health && health.lastError ? "ERROR"
+      : health && health.authorized ? (health.partial ? "PARTIAL" : "LIVE")
+      : health && health.lastSyncAt ? "LINKED"
       : live ? "SYNCED" : "STANDBY";
     $("#lastSyncText").textContent = D.fmtDateTime(state.lastSync);
-    $("#linkSourceText").textContent = imp ? imp.source : "—";
+    $("#linkSourceText").textContent = imp ? imp.source : healthLive ? "Google Health" : "—";
     $("#linkSourceText").title = imp ? imp.filename : "";
     $("#archiveRange").textContent = imp && imp.rangeStart && imp.rangeEnd
       ? (imp.rangeStart === imp.rangeEnd
@@ -473,30 +487,30 @@
     const status = $("#importStatus");
     if (status) {
       status.classList.toggle("is-live", live);
-      if (fit && fit.lastError) {
+      if (health && health.lastError) {
         status.innerHTML = `<div class="import-status-mark">!</div><div>
-             <strong>GOOGLE FIT ERROR</strong>
-             <p>${esc(fit.lastError)}</p>
+             <strong>GOOGLE HEALTH ERROR</strong>
+             <p>${esc(health.lastError)}</p>
            </div>`;
-      } else if (fit && fit.authorized) {
+      } else if (health && health.authorized) {
         status.innerHTML = `<div class="import-status-mark">✓</div><div>
-             <strong>GOOGLE FIT CONNECTED</strong>
-             <p>Authorized for this browser session. Press SYNC GOOGLE FIT to refresh the archive.</p>
+             <strong>${health.partial ? "PARTIAL GOOGLE HEALTH LINK" : "GOOGLE HEALTH CONNECTED"}</strong>
+             <p>Authorized for this browser session. ${health.partial ? "Some read scopes were not granted, so those metrics stay blank. " : ""}Press SYNC GOOGLE HEALTH to refresh the archive.</p>
            </div>`;
       } else if (imp) {
         status.innerHTML = `<div class="import-status-mark">✓</div><div>
              <strong>ARCHIVE ACTIVE · ${imp.days} DAYS · ${imp.workouts} GATES</strong>
              <p>${esc(imp.filename || "health archive")} processed locally. Scores recalculated from ${D.fmtShort(imp.rangeStart || dash.activeKey)}${imp.rangeEnd ? " – " + D.fmtShort(imp.rangeEnd) : ""}.</p>
            </div>`;
-      } else if (fit && fit.lastSyncAt) {
+      } else if (health && health.lastSyncAt) {
         status.innerHTML = `<div class="import-status-mark">✓</div><div>
-             <strong>GOOGLE FIT LINKED</strong>
-             <p>Authorization is session-only. Press SYNC GOOGLE FIT to refresh your archive.</p>
+             <strong>GOOGLE HEALTH LINKED</strong>
+             <p>Authorization is session-only. Press SYNC GOOGLE HEALTH to refresh your archive.</p>
            </div>`;
       } else {
         status.innerHTML = `<div class="import-status-mark">!</div><div>
              <strong>NO ARCHIVE DETECTED</strong>
-             <p>Connect Google Fit above, or import at least one day of health data to initialize scores, stats and quests.</p>
+             <p>Connect Google Health and sync at least one day of data to initialize scores, stats and quests.</p>
            </div>`;
       }
     }
@@ -513,7 +527,7 @@
           <span>${D.fmtDateTime(h.at)}</span>
           <small>${esc(h.source)} · ${h.days} days · ${h.workouts} gates</small>
         </div>`).join("")
-      : `<div class="history-empty">NO IMPORTS ON RECORD</div>`;
+      : `<div class="history-empty">NO SYNC HISTORY ON RECORD</div>`;
 
     const banner = $("#emptyBanner");
     if (banner) banner.hidden = dash.hasData;

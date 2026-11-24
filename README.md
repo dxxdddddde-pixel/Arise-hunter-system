@@ -1,11 +1,12 @@
 # ARISE // Hunter Interface
 
-A single-page health dashboard with **Solo Leveling** "System" styling, built on top of your own
-**Google Fit** data. Recovery, strain and sleep scores are recalculated locally, then fed into a
+A single-page health dashboard with **Solo Leveling** "System" styling, driven by your own
+**Google Health** data. Recovery, strain and sleep scores are recalculated locally, then fed into a
 hunter profile: XP, levels, E→Monarch ranks, attributes, daily/weekly quests, a full Training Grounds
 protocol builder, a 14-day Body Log with monthly strength peaks and eighteen unlockable shadows.
 
-No build step, no server, no account. Open `index.html` and it runs.
+No build step. The demo runs by opening `index.html`; live Google Health sync needs an HTTPS origin
+(GitHub Pages) or `http://localhost:8080` and a Google account.
 
 ---
 
@@ -16,30 +17,25 @@ No build step, no server, no account. Open `index.html` and it runs.
 2. The System boots with an empty archive and shows **"AWAITING SYNC"**.
 3. Either:
    - click **LOAD DEMO** to preview 40 days of realistic health data, or
-   - click **SYNC GOOGLE FIT** to authorize and pull your last 40 days from Google Fit, or
-   - drag a health archive onto the Data Link screen as a fallback import.
+   - publish to GitHub Pages (or serve locally on port 8080), configure Google Health below, then
+     click **SYNC GOOGLE HEALTH** to pull up to 40 days of available data.
 
-Everything is stored in `localStorage` under `arise-hunter-system-v1`. Nothing is uploaded unless you
-enable the optional Firebase Cloud Link. **Google Fit live sync requires an HTTPS origin** (GitHub
-Pages or localhost); opening `index.html` directly with `file://` is fine for demo/file import but
-Google will reject the OAuth origin.
+Everything is stored in `localStorage` under `arise-hunter-system-v1`. Health data is not uploaded
+unless you enable optional Firebase Cloud Link. **Google OAuth will not complete from `file://`** —
+use GitHub Pages or `http://localhost:8080` for the live link.
 
-If your browser blocks local-file features, serve the folder instead:
+If you test locally, serve this folder on exactly port 8080 with any static file server, then visit
+`http://localhost:8080`. The redirect URI must match that URL exactly.
 
-```powershell
-# any static server works; for example, VS Code's Live Server extension
-# or, if Python is available on the machine:
-python -m http.server 8080
-```
-
-Then visit `http://localhost:8080`.
+> **Health archive file import has been removed.** Google Health is the only live source. Backup
+> export/restore still works and is the supported way to move an ARISE snapshot between devices.
 
 ---
 
 ## iPhone via GitHub Pages
 
-The dashboard is a installable web app (PWA). GitHub Pages hosts it over HTTPS, which Safari needs
-for home-screen installation and offline caching.
+The dashboard is an installable web app (PWA). GitHub Pages hosts it over HTTPS, which Safari needs
+for home-screen installation, offline caching and Google OAuth.
 
 ### Deploy once
 
@@ -65,93 +61,112 @@ for home-screen installation and offline caching.
 
 The first visit needs an internet connection so the app shell can be cached. After that, `sw.js`
 serves the dashboard offline. Data is stored per device in Safari's site data unless you enable the
-optional Firebase Cloud Link below.
-
-> Google Fit live sync needs a legacy Google Cloud project with the Fitness API already enabled.
-> If yours does not have it, use the official Apple Health export or Health Auto Export JSON fallback.
+optional Firebase Cloud Link below. Live sync always needs the network.
 
 ---
 
-## Google Fit live sync (legacy projects only)
+## Google Health live sync
 
-**Data Link → Google Fit Uplink** authorizes the browser directly with Google Identity Services and
-reads the last 40 days from the legacy Google Fit REST API. The snapshot goes through the same
-`SystemData.buildLiveResult()` pipeline as file imports, so scoring, XP, quests, ranks and the rest of
-the game systems stay identical.
-
-> [!IMPORTANT]
-> **Google Fit is deprecated.** Since May 1 2024, new developers cannot sign up, and the Fitness API
-> cannot be enabled on new Cloud projects. This works only if you already own a legacy project where
-> Fitness API access was enabled. If you do not, use the file-import fallback below. Migrating to the
-> newer Google Health API / Health Connect would be a separate project.
+**Data Link → Google Health Uplink** authorizes the browser directly against Google's OAuth 2.0
+Authorization Code flow with PKCE (`S256`) and CSRF `state`. No client secret or backend is used. The
+resulting snapshot goes through `SystemData.buildLiveResult()` — the same scoring pipeline as the
+demo — so XP, quests, ranks, Training Grounds, Body Log and strength state stay consistent.
 
 ### 1. Prepare the Google Cloud project
 
-1. Open **Google Cloud Console → APIs & Services → Library** in the project that owns your OAuth
-   client and enable **Fitness API** (if it is not already enabled).
-2. Open **OAuth consent screen** and add these read scopes:
-   - `https://www.googleapis.com/auth/fitness.activity.read`
-   - `https://www.googleapis.com/auth/fitness.sleep.read`
-   - `https://www.googleapis.com/auth/fitness.heart_rate.read`
-   - `https://www.googleapis.com/auth/fitness.body_temperature.read`
-3. Add your GitHub Pages **origin** as an **Authorized JavaScript origin**:
-   `https://<username>.github.io` (origin only — no `/<repo>` path). Add `http://localhost:8080` too
-   if you test locally with a static server.
-4. Copy the project's web OAuth **Client ID**. Do not test Fit from `file://` — use GitHub Pages or
-   `http://localhost:8080`.
+1. Open **Google Cloud Console → APIs & Services → Library** and enable the **Google Health API**
+   for the project that owns your OAuth client.
+2. Open **OAuth consent screen** and add all three read scopes:
+   - `https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly`
+   - `https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly`
+   - `https://www.googleapis.com/auth/googlehealth.sleep.readonly`
+3. If the app is in **Testing**, add your Google account as a **Test user**.
+4. Create or open a **Web application** OAuth client. Because this is a public browser client, use
+   Authorization Code + PKCE; do not put a client secret in this repository.
+5. Add the exact **Authorized redirect URI** for each place you run the app:
+   - `https://dxxdddddde-pixel.github.io/Arise-hunter-system/` (include the repo path and trailing slash)
+   - `http://localhost:8080/` for local testing
+6. Add the corresponding **Authorized JavaScript origins**:
+   - `https://dxxdddddde-pixel.github.io` (origin only — no repo path)
+   - `http://localhost:8080`
+
+Google compares redirect URIs exactly, including scheme, host, path and trailing slash. The app uses
+the current page URL by default, so the GitHub Pages URL above matches when deployed at the repo root.
 
 ### 2. Add the client ID
 
-Open `firebase-config.js` and set `fitClientId` to that legacy client ID. If it matches your existing
-`googleClientId`, you can leave `fitClientId` the same or omit it — the app falls back to
-`googleClientId`.
+Open `firebase-config.js` and confirm `healthClientId`:
 
 ```js
 window.ARISE_FIREBASE_CONFIG = {
-  // ...Firebase values...
-  googleClientId: "123456789-abc.apps.googleusercontent.com",
-  fitClientId: "123456789-abc.apps.googleusercontent.com" // must be Fit-enabled
+  // ...Firebase values / googleClientId for Cloud Link...
+  healthClientId: "123456789-abc.apps.googleusercontent.com",
+  healthRedirectUri: ""
 };
 ```
 
-The client ID is public by design. Access is controlled by Google's OAuth consent screen, not by
-hiding the ID.
+`healthClientId` falls back to `googleClientId` when empty. Leave `healthRedirectUri` empty to use
+the current page URL; set it only if Google requires a different exact redirect URI. The client ID is
+public by design. Never add a client secret to a static site.
 
 ### 3. Sync
 
-1. Open **Data Link → Google Fit Uplink** and press **CONNECT GOOGLE FIT**.
-2. Press **SYNC GOOGLE FIT**. The app requests steps, calories, active minutes, sleep sessions and
-   stages, heart-rate summaries, wrist temperature, workouts and basal metabolic rate.
-3. If an archive already exists, confirm **REPLACE ARCHIVE**. Hunter name, claimed quest XP, audio
-   setting, Training Grounds, Body Log and Strength Log are preserved.
-4. Press **SYNC GOOGLE FIT** again whenever you want a refresh. Authorization is session-only, so a
-   new browser session may ask you to authorize again.
+1. Open **Data Link → Google Health Uplink** and press **CONNECT GOOGLE HEALTH**.
+2. Press **SYNC GOOGLE HEALTH**. The app reads daily rollups and summaries for the last 40 days:
+   steps, active/total calories, active minutes, heart rate, core/body temperature, HRV, resting HR,
+   respiratory rate, VO₂ max, sleep and workouts.
+3. If an archive already exists, confirm **REPLACE ARCHIVE**. Your hunter name, claimed quest XP,
+   audio setting, Training Grounds protocol, Body Log, Strength Log, Cloud Link state and health-link
+   metadata are preserved.
+4. Press **SYNC GOOGLE HEALTH** again for a refresh. Authorization is session-only; a new browser
+   session asks you to authorize again. The last sync time and granted-scope record stay in local
+   state.
 
-### What Fit can and cannot supply
+### Partial consent is supported
 
-| ARISE metric | Google Fit source |
+You may grant any subset of the three scopes. The status chip shows **PARTIAL HEALTH LINK**, and only
+the granted metrics populate; the rest stay blank rather than failing the whole sync. To add scopes
+later, press **SYNC GOOGLE HEALTH** again and approve the additional access. The app asks for all
+three scopes each time and reads the actually granted scopes from the token response.
+
+### What Google Health can supply
+
+| ARISE metric | Google Health source |
 | --- | --- |
-| Steps | `com.google.step_count.delta` |
-| Active energy / basal energy | `com.google.calories.expended` minus `com.google.calories.bmr` |
-| Exercise minutes | `com.google.active_minutes` |
-| Sleep, deep, REM, core, awake | `com.google.sleep.segment` + sleep sessions |
-| Heart rate | `com.google.heart_rate.summary` |
-| Wrist temperature | `com.google.body.temperature` (wrist readings only) |
-| Gates/workouts | Fit sessions, mapped by activity type |
-| HRV, resting HR, respiratory rate, VO₂ max | Not available from the core Fit types — left blank |
+| Steps | `steps` daily rollup |
+| Active energy / basal energy | `active-energy-burned` and `total-calories` (basal = total − active) |
+| Exercise minutes | `active-minutes` daily rollup |
+| Sleep, deep, REM, core, awake | `sleep` sessions and stage summaries |
+| Heart rate | `heart-rate` rollup (average/min/max) |
+| Body temperature | `core-body-temperature` rollup |
+| Gates/workouts | `exercise` sessions |
+| HRV, resting HR, respiratory rate, VO₂ max | Daily summary data types |
 
-Because HRV/resting HR are not exposed, Recovery leans on sleep and wrist temperature when syncing
-from Fit. The fallback file import can still populate those extra metrics if your source provides them.
+Because HRV and resting HR require their own scope, Recovery relies more on sleep, temperature and
+other available signals when those are not granted.
+
+### Apple Health on iPhone
+
+ARISE reads only data already inside your Google Health profile. It cannot read Apple Health, and
+health archive file import is no longer available. If you want Apple Health data in ARISE, first get
+the desired categories into the **Google Health / Fitbit app** on iPhone, then sync here. Google's
+Apple Health import covers only supported categories and a limited history window; older or excluded
+data will not appear.
 
 ### Troubleshooting
 
-- **403 / "Fitness API is not enabled"** — the OAuth client belongs to a project without legacy
-  Fitness API access, or a scope is missing from the consent screen.
-- **401 / "authorization expired"** — press **SYNC GOOGLE FIT** to authorize again.
-- **"Google Identity Services did not load"** — check the network connection and reload; the GIS
-  script comes from `accounts.google.com`.
-- **"NO GOOGLE FIT DATA"** — the authorized account has no Fit records in the last 40 days, or the
-  enabled data types are not being written by your phone/watch app.
+- **"SETUP REQUIRED"** — `healthClientId` is empty or still a placeholder.
+- **`redirect_uri_mismatch`** — register the exact current page URL under **Authorized redirect URIs**.
+  On GitHub Pages include `/Arise-hunter-system/` and the trailing slash.
+- **403 / permission error** — enable the Google Health API, add the scopes to the consent screen,
+  and add your account as a test user while the app is in testing.
+- **401 / "authorization expired"** — press **SYNC GOOGLE HEALTH** to authorize again.
+- **`ACCOUNT_NOT_LINKED`** — the Google account is not linked to Google Health. Link it in the
+  Google Health / Fitbit app first.
+- **"PARTIAL HEALTH LINK"** — some grants are missing. Reconnect and approve the missing scopes.
+- **"NO GOOGLE HEALTH DATA"** — the account has no supported records in the last 40 days, or the
+  source app has not written them into Google Health yet.
+- **OAuth does nothing from `file://`** — deploy to GitHub Pages or serve on `http://localhost:8080`.
 
 ---
 
@@ -184,12 +199,14 @@ window.ARISE_FIREBASE_CONFIG = {
   projectId: "your-project",
   appId: "1:123456789:web:abcdef",
   googleClientId: "123456789-abc.apps.googleusercontent.com",
-  fitClientId: "123456789-abc.apps.googleusercontent.com"
+  healthClientId: "123456789-abc.apps.googleusercontent.com",
+  healthRedirectUri: ""
 };
 ```
 
 The API key and OAuth client ID are public by design. Access is controlled by the security rules, not
-by hiding them. The `googleClientId` must be from the same Google Cloud project as the Firebase app.
+by hiding them. `googleClientId` must be from the same Google Cloud project as the Firebase app for
+Cloud Link. It can also serve as the fallback Google Health client ID when `healthClientId` is empty.
 
 ### 3. Publish security rules
 
@@ -240,35 +257,16 @@ are not required.
 
 ---
 
-## File import fallback (Apple Health / Health Auto Export)
+## Backup export / restore
 
-Use this when Google Fit is unavailable for your project or when you want extra metrics such as HRV
-and resting heart rate. Two formats are supported.
+**Data Link → Sync History** keeps **EXPORT BACKUP** and **IMPORT BACKUP**. A backup is an ARISE JSON
+state snapshot — not a health archive file. It includes your metrics, hunter identity, claimed XP,
+Training Grounds, Body Log, Strength Log and link metadata.
 
-### Option A — Apple Health export
-
-1. On iPhone open **Health** → tap your **profile picture** → **Export All Health Data**.
-2. Share/save the resulting **`export.zip`** to the device running this app.
-3. Drag `export.zip` onto the Data Link screen, or click **CHOOSE FILE**.
-
-The app unzips it in the browser. If your browser cannot open the ZIP (older Safari), unzip it
-yourself and drop **`export.xml`** instead.
-
-### Option B — Health Auto Export JSON
-
-1. Install **Health Auto Export – JSON+CSV** (App Store) and create an export of metrics + workouts
-   in JSON format.
-2. Drop the `.json` file onto the Data Link screen.
-
-The parser understands the typical HAE envelope (`data.metrics[]` with `name`/`units`/`data[]`, plus
-`data.workouts[]`), including sleep-stage breakdowns and daily aggregates. A single-day file, a
-multi-day file and an array of daily files are all accepted.
-
-### Re-syncing
-
-Each Google Fit sync or file import **replaces** movement, sleep and workout history so scores never
-double-count. Your hunter name, claimed quest XP and audio setting are preserved. An import summary is
-written to the System Feed, and the last 12 imports are listed on the Data Link screen.
+Each Google Health sync **replaces** movement, sleep and workout history so scores never double-count.
+Your hunter name, claimed quest XP, audio setting, Training Grounds, Body Log, Strength Log, Cloud
+Link state and health-link metadata are preserved. A sync summary is written to the System Feed, and
+the last 12 syncs are listed on the Data Link screen.
 
 ---
 
@@ -278,7 +276,7 @@ Scores are heuristics meant for motivation and trend-spotting, not medical diagn
 
 | Score | Range | Inputs |
 | --- | --- | --- |
-| **Recovery** | 0–100 | HRV and resting heart rate vs. your own 28-day baseline (file import only), last night's sleep, respiratory rate, wrist-temperature deviation |
+| **Recovery** | 0–100 | HRV and resting heart rate vs. your own 28-day baseline (when granted), last night's sleep, respiratory rate, body-temperature deviation |
 | **Strain** | 0–21 | Active energy, exercise minutes, workout duration and workout intensity |
 | **Sleep** | 0–100 | Total sleep, awake time, deep-sleep share, REM share |
 
@@ -292,7 +290,7 @@ absolute terms.
 
 ## The System
 
-- **XP** is earned automatically from each imported day: steps, exercise minutes, active energy,
+- **XP** is earned automatically from each synced day: steps, exercise minutes, active energy,
   a sleep bonus and 30 XP per workout, plus claimed quest rewards.
 - **Levels** use an increasing curve (`400 + 120 × (level − 1)` XP per level, up to level 100).
 - **Ranks** unlock at levels 1 / 5 / 10 / 16 / 24 / 34 / 50 / 70:
@@ -315,8 +313,8 @@ with ranks that scale with duration and energy.
 
 ## Training Grounds
 
-The **100× Time Chamber** is the training layer of the System. It is independent of Apple Health's
-workout gates because Health exports do not contain individual sets, reps or loads.
+The **100× Time Chamber** is the training layer of the System. It is independent of Health workout
+gates because Google Health exercise sessions do not contain individual sets, reps or loads.
 
 - **Today's Workout** — the System checks your local weekday and serves the matching day from the
   active plan week, with per-exercise targets, completion chips, a live set log and one-click logging.
@@ -357,8 +355,8 @@ workout gates because Health exports do not contain individual sets, reps or loa
 - **Personal records** — best 1RM, heaviest set, highest single-session volume and max reps for rep
   lifts; longest hold, total hold time, holds logged and best session for timed holds.
 
-Plan and ledger data live in the same `arise-hunter-system-v1` snapshot as your watch archive, so they
-are included in backups and survive archive re-imports. Use **LOAD SAMPLE DATA** in the Training
+Plan and ledger data live in the same `arise-hunter-system-v1` snapshot as your health archive, so they
+are included in backups and survive archive replacement. Use **LOAD SAMPLE DATA** in the Training
 Grounds to explore the analytics without entering your own sets.
 
 ---
@@ -370,7 +368,7 @@ The **Body Log** view keeps long-term physical records separate from the daily T
 - **Biometric checkpoints** — log **body weight** and **waist (cm)** once every **14 days**. The date
   picker is locked to the next checkpoint after your last entry, so the cadence stays consistent. The
   header shows when the next checkpoint is due.
-- **Calculated average steps** — the System reads your Google Fit archive (or imported fallback file) and averages daily
+- **Calculated average steps** — the System reads your Google Health archive and averages daily
   steps over the 14 days ending on the checkpoint date. The modal shows how many daily records fed the
   calculation; no step field is typed by hand.
 - **Checkpoint reminders** — once a checkpoint is due, an in-app popup appears immediately and repeats
@@ -399,8 +397,8 @@ are included in JSON backups.
 
 The `ios/` folder and `.github/workflows/build-ipa.yml` are left over from an earlier HealthKit
 sideloading build. They are **not** part of the current workflow. The web app has no native bridge;
-it runs entirely from GitHub Pages and pulls live data only from Google Fit (or from a fallback file
-import). You can ignore or delete those legacy files.
+it runs entirely from GitHub Pages and reads live data only from Google Health. You can ignore or
+delete those legacy files.
 
 ---
 
@@ -418,18 +416,20 @@ respects `prefers-reduced-motion` for particles and animations.
 
 ## Privacy
 
-- Imports are parsed **entirely in the browser**; health data is never uploaded unless you enable
-  **Cloud Link** and sign in.
+- Google Health is read directly by your browser with an access token that is kept for the current
+  session only; no token or client secret is stored in this repository.
+- The OAuth `state` and PKCE verifier are kept in `sessionStorage` only while a connection is being
+  completed.
+- Health data is processed locally. It is never uploaded to ARISE and is not uploaded to Firebase
+  unless you enable **Cloud Link** and sign in.
 - Without Cloud Link, data lives only in this browser profile's `localStorage`.
 - With Cloud Link, Firebase stores your signed-in account identifier and encrypted-in-transit
   snapshots in Firestore documents under your own user ID. Only that account can read them.
 - On GitHub Pages, `sw.js` caches the app's own files and Firebase SDK so it opens offline.
 - **Data Link → Export Backup** writes a JSON snapshot you can keep.
-- **Data Link → Import Backup** restores that snapshot on another device.
+- **Data Link → Import Backup** restores that ARISE snapshot on another device.
 - **Data Link → Purge Data** deletes the archive from this browser.
 - Clearing site data / browser storage also deletes the archive, so export a backup first.
-- Some browsers isolate or clear `file://` storage between visits. If your archive disappears, run the
-  app from `localhost` (see Quick start) and import again.
 
 ---
 
@@ -437,21 +437,20 @@ respects `prefers-reduced-motion` for particles and animations.
 
 | Symptom | Fix |
 | --- | --- |
-| `export.zip` fails to open | Unzip it and drop `export.xml`; very old browsers lack `DecompressionStream` |
-| "No usable health records found" | Make sure the file is a Health `export.xml`/`export.zip` or a Health Auto Export JSON file, not a screenshot or PDF |
-| Import is slow | Apple Health exports can be large. Prefer **Health Auto Export** JSON, or an export with a shorter date range |
-| "Save failed — storage is full" | Use **Export Backup**, then **Purge Data**, then import a smaller range |
-| Archive disappears after closing the tab | Some browsers do not persist `file://` storage; serve the folder from `localhost` instead |
+| OAuth never returns from `file://` | Use GitHub Pages or `http://localhost:8080` |
+| `redirect_uri_mismatch` | Register the exact current page URL as an Authorized redirect URI |
+| "SETUP REQUIRED" | Add `healthClientId` (or `googleClientId`) in `firebase-config.js` |
+| 403 / permission error | Enable the Google Health API, add the read scopes, and add the account as a test user |
+| `ACCOUNT_NOT_LINKED` | Link the Google account inside the Google Health / Fitbit app first |
+| "PARTIAL HEALTH LINK" | Reconnect and approve the missing Activity, Sleep or Health Metrics scope |
+| "NO GOOGLE HEALTH DATA" | Confirm the source app has written supported records into Google Health in the last 40 days |
+| "Save failed — storage is full" | Use **Export Backup**, then **Purge Data**, then sync a smaller source window |
+| Archive disappears after closing the tab | Some browsers do not persist `file://` storage; use GitHub Pages or `localhost` |
 | A newer sync shows lower scores | Scores are relative to your rolling baseline; a hard training block can lower recovery while strain rises |
-| Nothing appears after import | Check the System Feed (right column) for the import summary or error message |
+| Nothing appears after sync | Check the System Feed (right column) for the sync summary or error message |
 
-Test fixtures live in `test-fixtures/`:
-
-- `sample-export.xml` — small Apple Health XML
-- `export.zip` — the same XML zipped
-- `sample-hae.json` — Health Auto Export JSON with sleep stages, wrist temp and workouts
-
-These are demo records only; import them to see the pipeline end-to-end.
+`test-fixtures/` contains legacy Apple Health / Health Auto Export samples from the removed file-import
+feature. They are unused by the app.
 
 ---
 
@@ -462,23 +461,23 @@ index.html          markup, views, modals, overlays
 styles.css          theme, layout, responsive rules, animations
 manifest.webmanifest PWA metadata for Add to Home Screen
 sw.js               offline app-shell cache (GitHub Pages / HTTPS)
-firebase-config.js  Firebase web app config (paste your values here)
-js/data.js          storage, parsers, scoring, XP/levels, quests, demo generator
+firebase-config.js  Firebase config and public Google OAuth client IDs
+js/data.js          storage, scoring, XP/levels, quests, demo generator
 js/ui.js            renderers and view components
 js/training.js      weekly plan builder, set ledger, 1RM, overload, charts, PRs
 js/body.js          biometric checkpoints, calculated steps, monthly strength peaks
 js/cloud.js         Google sign-in, automatic Firebase snapshot sync, restore
-js/fit.js           Google Fit OAuth + REST mapping into the live snapshot pipeline
-js/app.js           boot, event wiring, import/export backup, Google Fit sync
+js/health.js        Google Health PKCE OAuth + REST mapping into the live snapshot pipeline
+js/app.js           boot, event wiring, backup export/restore, Google Health sync
 assets/fonts/       self-hosted fonts
 assets/icons/       PWA + Apple touch icons
-test-fixtures/      sample archives for testing imports
+test-fixtures/      LEGACY health archive samples (unused)
 ios/ARISE/          LEGACY SwiftUI + HealthKit shell (unused)
 ios/build-ipa.sh    LEGACY local macOS IPA build
 .github/workflows/  GitHub Actions Pages deployment + legacy IPA builder
 ```
 
-Vanilla HTML/CSS/JS with self-hosted fonts. No build step and no tracking. Live Google Fit sync and
+Vanilla HTML/CSS/JS with self-hosted fonts. No build step and no tracking. Live Google Health sync and
 optional Cloud Link make network calls only when you explicitly use them.
 
 > **Not medical advice.** Recovery, strain and sleep figures are motivational estimates derived from

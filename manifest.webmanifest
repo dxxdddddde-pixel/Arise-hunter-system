@@ -2,7 +2,7 @@
   "id": "./",
   "name": "ARISE // Hunter System",
   "short_name": "ARISE",
-  "description": "Solo Leveling-inspired health dashboard for Google Fit data, Training Grounds and Body Log.",
+  "description": "Solo Leveling-inspired health dashboard for Google Health data, Training Grounds and Body Log.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

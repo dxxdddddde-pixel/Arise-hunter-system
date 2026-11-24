@@ -1033,39 +1033,10 @@ a { color: var(--cyan); }
 .link-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(280px, .9fr); gap: 16px; align-items: start; }
 .link-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .link-side { display: flex; flex-direction: column; gap: 16px; }
-.fit-panel { padding-bottom: 18px; }
-.fit-actions .btn:disabled { opacity: 0.38; cursor: not-allowed; }
-.fit-actions .btn[hidden] { display: none; }
-.connect-panel { padding-bottom: 20px; }
-
-.dropzone {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 24px 18px 16px;
-  border: 1px dashed rgba(87, 230, 255, 0.3);
-  background:
-    radial-gradient(80% 90% at 50% 0%, rgba(47, 123, 255, 0.1), transparent 70%),
-    rgba(7, 14, 27, 0.6);
-  text-align: center;
-  transition: border-color .2s, background .2s, box-shadow .2s;
-  cursor: pointer;
-}
-.dropzone:hover, .dropzone.is-drag {
-  border-color: var(--cyan);
-  background:
-    radial-gradient(80% 90% at 50% 0%, rgba(87, 230, 255, 0.16), transparent 70%),
-    rgba(8, 20, 38, 0.7);
-  box-shadow: inset 0 0 40px rgba(47, 140, 255, 0.1);
-}
-.drop-sigil { width: 62px; height: 62px; color: var(--cyan); filter: drop-shadow(0 0 12px rgba(87, 230, 255, 0.4)); animation: floaty 6s ease-in-out infinite; }
-.drop-sigil svg { width: 100%; height: 100%; }
-.drop-title { margin-top: 10px; font-family: var(--font-display); font-size: 0.9rem; letter-spacing: 0.12em; color: #eef8ff; }
-.drop-sub { margin-top: 5px; font-family: var(--font-mono); font-size: 0.56rem; letter-spacing: 0.04em; color: var(--muted); line-height: 1.7; }
-.drop-sub span { color: var(--text-dim); }
-.drop-actions { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; margin-top: 14px; }
-.drop-privacy { margin-top: 12px; font-family: var(--font-mono); font-size: 0.5rem; letter-spacing: 0.08em; color: #55708f; }
+.health-panel { padding-bottom: 18px; }
+.health-actions .btn:disabled { opacity: 0.38; cursor: not-allowed; }
+.health-actions .btn[hidden] { display: none; }
+.archive-panel { padding-bottom: 20px; }
 
 .import-status {
   display: flex;
@@ -1896,8 +1867,8 @@ a { color: var(--cyan); }
   .gate-row { grid-template-columns: 34px minmax(0, 1fr) 50px; }
   .gate-row .gate-stat.gate-time { display: none; }
   .method { grid-template-columns: 26px 1fr; gap: 8px; }
-  .drop-actions { flex-direction: column; width: 100%; }
-  .drop-actions .btn { width: 100%; }
+  .archive-panel .link-actions { flex-direction: column; width: 100%; }
+  .archive-panel .link-actions .btn { width: 100%; }
   .link-detail { font-size: 0.52rem; }
   .day-tab { font-size: 0.5rem; padding: 7px 1px; }
   .day-tab small { font-size: 0.4rem; }

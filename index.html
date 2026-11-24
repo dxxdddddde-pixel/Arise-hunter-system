@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#04060d" />
-  <meta name="description" content="ARISE — a Solo Leveling inspired health system for your Google Fit data." />
+  <meta name="description" content="ARISE — a Solo Leveling inspired health system for your Google Health data." />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -15,7 +15,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="assets/fonts.css" />
-  <link rel="stylesheet" href="styles.css?v=11" />
+  <link rel="stylesheet" href="styles.css?v=12" />
 </head>
 <body data-rank="E">
   <canvas id="fx" aria-hidden="true"></canvas>
@@ -72,7 +72,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
             <path d="M12 3v10m0 0 4-4m-4 4-4-4"/><path d="M4 15v3a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-3"/>
           </svg>
-          IMPORT
+          SYNC
         </button>
       </div>
     </header>
@@ -168,7 +168,7 @@
                 <path d="M9 18.5h.01"/><path d="M12 9v3l2 1.5"/>
               </svg>
             </span>
-            <span class="nav-text"><strong>Link</strong><small>Google Fit sync</small></span>
+            <span class="nav-text"><strong>Link</strong><small>Google Health sync</small></span>
             <span class="nav-glow"></span>
           </button>
         </nav>
@@ -198,10 +198,10 @@
             <div class="empty-copy">
               <p class="eyebrow">NO SIGNAL DETECTED</p>
               <h3>The System awaits your first sync.</h3>
-              <p>Import an Apple Health archive to awaken your status window, or load a simulated hunter archive to preview the interface.</p>
+              <p>Connect Google Health to awaken your status window, or load a simulated hunter archive to preview the interface.</p>
             </div>
             <div class="empty-actions">
-              <button class="btn btn-primary" id="emptySync">SYNC GOOGLE FIT</button>
+              <button class="btn btn-primary" id="emptySync">SYNC GOOGLE HEALTH</button>
               <button class="btn btn-ghost" id="emptyDemo">LOAD DEMO</button>
             </div>
           </div>
@@ -220,7 +220,7 @@
                   </svg>
                   <div class="ring-label"><strong id="recoveryVal">--</strong><span>/ 100</span></div>
                 </div>
-                <p class="score-desc" id="recoveryDesc">Sync Google Fit data to calculate recovery from resting heart rate, body temperature and sleep.</p>
+                <p class="score-desc" id="recoveryDesc">Sync Google Health data to calculate recovery from resting heart rate, body temperature and sleep.</p>
               </div>
               <div class="spark" id="recoverySpark"></div>
             </article>
@@ -668,7 +668,7 @@
             <div class="body-chart" id="bodyChart"></div>
             <div class="chart-caption" id="bodyCaption"></div>
             <div class="body-checkpoint-list" id="bodyCheckpointList"></div>
-            <p class="panel-note">Log weight and waist once every 14 days. Average steps are read from your synced Google Fit archive (or imported fallback file) for the 14 days ending on the checkpoint date.</p>
+            <p class="panel-note">Log weight and waist once every 14 days. Average steps are read from your synced Google Health archive for the 14 days ending on the checkpoint date.</p>
           </article>
 
           <article class="panel strength-panel">
@@ -719,7 +719,7 @@
         <section class="view" id="view-link" aria-labelledby="linkTitle">
           <div class="view-head">
             <div>
-              <p class="eyebrow">GOOGLE FIT UPLINK</p>
+              <p class="eyebrow">GOOGLE HEALTH UPLINK</p>
               <h1 id="linkTitle">Data Link</h1>
             </div>
             <span class="sync-chip is-static" id="linkChip">
@@ -730,98 +730,79 @@
 
           <div class="link-grid">
             <div class="link-main">
-              <article class="panel fit-panel">
+              <article class="panel health-panel">
                 <div class="panel-head">
                   <div>
-                    <p class="eyebrow">GOOGLE FIT UPLINK</p>
+                    <p class="eyebrow">GOOGLE HEALTH UPLINK</p>
                     <h3>Live Biometrics</h3>
                   </div>
-                  <span class="sync-chip is-static" id="fitChip">
+                  <span class="sync-chip is-static" id="healthChip">
                     <span class="sync-chip-dot"></span>
-                    <span id="fitChipText">AWAITING SYNC</span>
+                    <span id="healthChipText">AWAITING SYNC</span>
                   </span>
                 </div>
 
                 <div class="link-detail">
                   <span>STATUS</span>
-                  <strong id="fitStatusText">READY</strong>
+                  <strong id="healthStatusText">READY</strong>
                 </div>
                 <div class="link-detail">
                   <span>ACCOUNT</span>
-                  <strong id="fitAccountText">NOT LINKED</strong>
+                  <strong id="healthAccountText">NOT LINKED</strong>
                 </div>
                 <div class="link-detail">
                   <span>LAST SYNC</span>
-                  <strong id="fitLastSyncText">NEVER</strong>
+                  <strong id="healthLastSyncText">NEVER</strong>
                 </div>
 
-                <p class="cloud-note" id="fitNote">Authorize Google Fit, then sync the last 40 days of data.</p>
-                <div class="link-actions fit-actions">
-                  <button class="btn btn-primary btn-sm" id="fitConnectBtn" type="button">CONNECT GOOGLE FIT</button>
-                  <button class="btn btn-ghost btn-sm" id="fitSyncBtn" type="button">SYNC GOOGLE FIT</button>
-                  <button class="btn btn-danger btn-sm" id="fitDisconnectBtn" type="button" hidden>DISCONNECT</button>
+                <p class="cloud-note" id="healthNote">Authorize Google Health, then sync the last 40 days of available data.</p>
+                <div class="link-actions health-actions">
+                  <button class="btn btn-primary btn-sm" id="healthConnectBtn" type="button">CONNECT GOOGLE HEALTH</button>
+                  <button class="btn btn-ghost btn-sm" id="healthSyncBtn" type="button">SYNC GOOGLE HEALTH</button>
+                  <button class="btn btn-danger btn-sm" id="healthDisconnectBtn" type="button" hidden>DISCONNECT</button>
                 </div>
               </article>
 
-              <article class="panel connect-panel">
+              <article class="panel archive-panel">
                 <div class="panel-head">
                   <div>
-                    <p class="eyebrow">FALLBACK INGESTION</p>
-                    <h3>Import Health Archive</h3>
+                    <p class="eyebrow">ARCHIVE STATE</p>
+                    <h3>Live Snapshot</h3>
                   </div>
                   <span class="panel-code">LINK-01</span>
-                </div>
-
-                <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop health export or click to choose file">
-                  <div class="drop-sigil" aria-hidden="true">
-                    <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.2">
-                      <path d="M32 6 56 20v24L32 58 8 44V20L32 6Z"/>
-                      <path d="M32 16v20m0 0 8-8m-8 8-8-8" opacity=".9"/>
-                      <circle cx="32" cy="6" r="2" fill="currentColor"/>
-                      <circle cx="56" cy="20" r="2" fill="currentColor"/>
-                      <circle cx="56" cy="44" r="2" fill="currentColor"/>
-                      <circle cx="32" cy="58" r="2" fill="currentColor"/>
-                      <circle cx="8" cy="44" r="2" fill="currentColor"/>
-                      <circle cx="8" cy="20" r="2" fill="currentColor"/>
-                    </svg>
-                  </div>
-                  <p class="drop-title">DROP HEALTH ARCHIVE</p>
-                  <p class="drop-sub">Apple Health <span>export.xml</span> · <span>export.zip</span> · Health Auto Export <span>.json</span></p>
-                  <div class="drop-actions">
-                    <button class="btn btn-primary" id="pickFile" type="button">CHOOSE FILE</button>
-                    <button class="btn btn-ghost" id="demoBtn" type="button">LOAD DEMO ARCHIVE</button>
-                  </div>
-                  <p class="drop-privacy">Processed locally in your browser. Nothing is uploaded to ARISE.</p>
                 </div>
 
                 <div class="import-status" id="importStatus">
                   <div class="import-status-mark" aria-hidden="true">!</div>
                   <div>
                     <strong>NO ARCHIVE DETECTED</strong>
-                    <p>Connect Google Fit above, or import at least one day of health data to initialize scores, stats and quests.</p>
+                    <p>Connect Google Health and sync at least one day of data to initialize scores, stats and quests.</p>
                   </div>
+                </div>
+                <div class="link-actions">
+                  <button class="btn btn-ghost" id="demoBtn" type="button">LOAD DEMO ARCHIVE</button>
                 </div>
 
                 <div class="methods">
                   <div class="method">
                     <span class="method-num">01</span>
                     <div>
-                      <h4>Google Fit first</h4>
-                      <p>Use <em>CONNECT GOOGLE FIT</em> and <em>SYNC GOOGLE FIT</em> to pull steps, calories, sleep, heart rate, temperature and workouts directly from your Google account.</p>
+                      <h4>Google Health first</h4>
+                      <p>Use <em>CONNECT GOOGLE HEALTH</em> and <em>SYNC GOOGLE HEALTH</em> to pull steps, calories, sleep, heart rate, temperature, HRV and workouts directly from your Google Health profile.</p>
                     </div>
                   </div>
                   <div class="method">
                     <span class="method-num">02</span>
                     <div>
-                      <h4>Apple Health export</h4>
-                      <p>Fallback: on iPhone, Health app → profile picture → <em>Export All Health Data</em> → share the .zip to this device. Drop the zip here.</p>
+                      <h4>Apple Health on iPhone</h4>
+                      <p>Apple Health data must first appear inside the <em>Google Health</em> / Fitbit app. ARISE reads only the categories Google already has; it cannot read Apple Health directly.</p>
                     </div>
                   </div>
                   <div class="method">
                     <span class="method-num">03</span>
                     <div>
-                      <h4>Health Auto Export</h4>
-                      <p>Fallback: in the Health Auto Export app, create an export of health metrics + workouts as JSON, then share the file here.</p>
+                      <h4>Partial consent is supported</h4>
+                      <p>Grant any subset of Activity, Sleep and Health Metrics. Granted metrics populate normally; the rest stay blank until you grant their scopes.</p>
                     </div>
                   </div>
                 </div>
@@ -944,7 +925,7 @@
                 <div class="panel-head">
                   <div>
                     <p class="eyebrow">ARCHIVE HISTORY</p>
-                    <h3>Imports</h3>
+                    <h3>Sync History</h3>
                   </div>
                 </div>
                 <div class="import-history" id="importHistory"></div>
@@ -957,7 +938,7 @@
 
               <article class="panel note-panel">
                 <p class="eyebrow">TECHNICAL NOTE</p>
-                <p>Google Fit is deprecated; new projects cannot enable the Fitness API. This live link works only with a legacy Cloud project that already has Fit access. File import remains available as a fallback.</p>
+                <p>Google Health is the only live source. Health data must already exist in your Google Health / Fitbit profile; ARISE does not read Apple Health files. Grant any subset of the three read scopes — ungranted metrics stay blank.</p>
               </article>
             </div>
           </div>
@@ -1120,24 +1101,23 @@
   <div class="working" id="working" aria-hidden="true">
     <div class="working-inner">
       <div class="working-rune"><i></i><i></i><i></i></div>
-      <p id="workingText">DECRYPTING ARCHIVE</p>
+      <p id="workingText">READING HEALTH DATA</p>
       <span class="working-sub">DO NOT DISCONNECT</span>
     </div>
   </div>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
-  <input type="file" id="fileInput" accept=".xml,.json,.zip,application/json,application/xml,application/zip" hidden />
   <input type="file" id="backupInput" accept=".json,application/json" hidden />
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="firebase-config.js?v=11"></script>
-  <script src="js/data.js?v=11"></script>
-  <script src="js/ui.js?v=11"></script>
-  <script src="js/training.js?v=11"></script>
-  <script src="js/body.js?v=11"></script>
-  <script src="js/cloud.js?v=11"></script>
-  <script src="js/fit.js?v=11"></script>
-  <script src="js/app.js?v=11"></script>
+  <script src="firebase-config.js?v=12"></script>
+  <script src="js/data.js?v=12"></script>
+  <script src="js/ui.js?v=12"></script>
+  <script src="js/training.js?v=12"></script>
+  <script src="js/body.js?v=12"></script>
+  <script src="js/cloud.js?v=12"></script>
+  <script src="js/health.js?v=12"></script>
+  <script src="js/app.js?v=12"></script>
 </body>
 </html>
