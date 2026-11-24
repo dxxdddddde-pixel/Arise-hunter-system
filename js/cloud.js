@@ -26,6 +26,7 @@
   let syncTimer = null;
   let syncing = false;
   let reconciled = false;
+  let restoringSession = false;
 
   function ensure(state) {
     if (!state.cloud || typeof state.cloud !== "object") state.cloud = {};
@@ -48,6 +49,50 @@
       return value && !/^(YOUR|PASTE|ADD)_/i.test(value);
     });
     return configured;
+  }
+
+  function firebaseErrorInfo(err) {
+    const code = err && err.code ? String(err.code) : "";
+    const message = err && err.message ? String(err.message) : "Unknown Firebase error.";
+    let hint = "";
+    if (code === "auth/unauthorized-domain") {
+      hint = "Add this site's domain in Firebase Console → Authentication → Settings → Authorized domains.";
+    } else if (code === "auth/operation-not-allowed") {
+      hint = "Enable Google under Firebase Console → Authentication → Sign-in method.";
+    } else if (code === "auth/network-request-failed") {
+      hint = "Check your internet connection and Safari cross-site tracking settings.";
+    } else if (code === "auth/redirect-cancelled-by-user") {
+      hint = "The Google redirect was interrupted. Try again.";
+    } else if (code === "auth/web-storage-unsupported") {
+      hint = "Safari is blocking Firebase storage. Allow cross-site cookies for this site.";
+    } else if (code === "auth/session-lost") {
+      hint = "Safari likely blocked the Firebase redirect session. Allow cross-site cookies or use a custom auth domain.";
+    }
+    return {
+      code,
+      message,
+      hint,
+      text: (code ? code + " — " : "") + message + (hint ? " " + hint : "")
+    };
+  }
+
+  function handleCloudError(title, err, showModal) {
+    if (!ctx) return null;
+    const state = ctx.getState();
+    const c = ensure(state);
+    const info = firebaseErrorInfo(err);
+    c.lastError = info.text;
+    D.saveState(state);
+    render();
+    UI.toast("error", title, info.text);
+    if (showModal) {
+      UI.openModal({
+        title,
+        body: "<p>" + (UI.escape ? UI.escape(info.text) : info.text) + "</p>",
+        actions: [{ label: "OK", kind: "primary" }]
+      });
+    }
+    return info;
   }
 
   function loadScript(src) {
@@ -91,10 +136,43 @@
     db = firebase.firestore();
 
     try {
-      const result = await auth.getRedirectResult();
-      if (result && result.user) UI.toast("success", "GOOGLE LINKED", "Cloud Link connected to " + result.user.email + ".");
+      if (auth.setPersistence && firebase.auth.Auth && firebase.auth.Auth.Persistence) {
+        await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+      }
     } catch (err) {
-      console.warn("ARISE: Google redirect result unavailable", err);
+      console.warn("ARISE: Firebase persistence unavailable", err);
+    }
+
+    let pendingRedirect = false;
+    try {
+      pendingRedirect = sessionStorage.getItem("arise:authRedirectPending") === "1";
+      if (pendingRedirect) sessionStorage.removeItem("arise:authRedirectPending");
+    } catch (err) {
+      /* sessionStorage unavailable; continue without the pending check */
+    }
+
+    restoringSession = true;
+    render();
+
+    let signedInFromRedirect = false;
+    let redirectFailed = false;
+    try {
+      const result = await auth.getRedirectResult();
+      if (result && result.user) {
+        signedInFromRedirect = true;
+        UI.toast("success", "GOOGLE LINKED", "Cloud Link connected to " + (result.user.email || result.user.uid) + ".");
+      }
+    } catch (err) {
+      redirectFailed = true;
+      handleCloudError("GOOGLE SIGN-IN FAILED", err, true);
+    } finally {
+      restoringSession = false;
+    }
+
+    if (pendingRedirect && !redirectFailed && !signedInFromRedirect && !auth.currentUser) {
+      const err = new Error("Google sign-in did not return a session.");
+      err.code = "auth/session-lost";
+      handleCloudError("GOOGLE SIGN-IN INCOMPLETE", err, true);
     }
 
     auth.onAuthStateChanged(onAuthChange);
@@ -116,7 +194,9 @@
 
     c.uid = user ? user.uid : null;
     c.email = user ? user.email || null : null;
-    if (!user) {
+    if (user) {
+      c.lastError = null;
+    } else {
       c.dirty = false;
       reconciled = false;
       clearTimeout(syncTimer);
@@ -125,13 +205,7 @@
     render();
     if (user && !reconciled) {
       reconciled = true;
-      reconcile().catch((err) => {
-        const current = ctx.getState();
-        const currentCloud = ensure(current);
-        currentCloud.lastError = err && err.message ? err.message : "Cloud reconciliation failed.";
-        D.saveState(current);
-        render();
-      });
+      reconcile().catch((err) => handleCloudError("CLOUD LINK ERROR", err, false));
     }
   }
 
@@ -532,11 +606,51 @@
       UI.toast("warn", "FIREBASE SETUP REQUIRED", "Add your Firebase web config to firebase-config.js first.");
       return;
     }
-    const provider = new firebase.auth.GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: "select_account" });
-    auth.signInWithRedirect(provider).catch((err) => {
-      UI.toast("error", "SIGN IN FAILED", err && err.message ? err.message : "Google sign-in was blocked.");
-    });
+
+    const state = ctx.getState();
+    const c = ensure(state);
+    c.lastError = null;
+    D.saveState(state);
+    render();
+
+    const btn = $("#cloudSignIn");
+    const originalText = btn ? btn.textContent : "SIGN IN WITH GOOGLE";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "OPENING GOOGLE…";
+    }
+    const restore = () => {
+      if (!btn) return;
+      btn.disabled = false;
+      btn.textContent = originalText;
+    };
+    const clearPending = () => {
+      try { sessionStorage.removeItem("arise:authRedirectPending"); } catch (err) { /* ignore */ }
+    };
+
+    try {
+      sessionStorage.setItem("arise:authRedirectPending", "1");
+    } catch (err) {
+      /* sessionStorage unavailable; continue without the pending check */
+    }
+
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      const pending = auth.signInWithRedirect(provider);
+      if (pending && typeof pending.catch === "function") {
+        pending.catch((err) => {
+          restore();
+          clearPending();
+          handleCloudError("SIGN IN FAILED", err, true);
+        });
+      }
+      setTimeout(restore, 5000);
+    } catch (err) {
+      restore();
+      clearPending();
+      handleCloudError("SIGN IN FAILED", err, true);
+    }
   }
 
   function signOut() {
@@ -575,17 +689,27 @@
     } else if (!auth) {
       label = "CONNECTING";
       detail = "Loading Firebase authentication…";
+    } else if (restoringSession && !user) {
+      label = "RESTORING SIGN-IN";
+      detail = "Checking your Google sign-in result…";
     } else if (user) {
       if (state.cloud.syncing) label = "SYNCING";
       else if (state.cloud.lastError) label = "SYNC ERROR";
       else if (state.cloud.dirty) label = "UNSYNCED CHANGES";
       else label = "CLOUD LINKED";
       detail = state.cloud.lastError || "Changes upload automatically about 15 seconds after you finish.";
+    } else if (state.cloud.lastError) {
+      label = "SIGN IN ERROR";
+      detail = state.cloud.lastError;
     }
 
     status.textContent = label;
-    if (chip) chip.classList.toggle("is-due", !!user && (state.cloud.dirty || !!state.cloud.lastError));
-    if (userEl) userEl.textContent = user ? user.email || user.uid : "NOT LINKED";
+    if (chip) chip.classList.toggle("is-due", !!state.cloud.dirty || !!state.cloud.lastError);
+    if (userEl) {
+      userEl.textContent = user
+        ? user.email || user.uid
+        : state.cloud.lastError ? "SIGN IN ERROR" : "NOT LINKED";
+    }
     if (note) note.textContent = detail;
     if (last) last.textContent = D.fmtDateTime(state.cloud.lastSyncAt ? new Date(state.cloud.lastSyncAt).toISOString() : null);
     if (pending) pending.textContent = !configured || !user ? "—" : state.cloud.dirty ? "PENDING UPLOAD" : "UP TO DATE";
