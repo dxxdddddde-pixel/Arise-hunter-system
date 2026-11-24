@@ -645,7 +645,10 @@
           handleCloudError("SIGN IN FAILED", err, true);
         });
       }
-      setTimeout(restore, 5000);
+      setTimeout(() => {
+        restore();
+        UI.toast("warn", "WAITING FOR GOOGLE", "Complete sign-in in the window that opened, then return here.");
+      }, 5000);
     } catch (err) {
       restore();
       clearPending();
