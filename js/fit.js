@@ -535,7 +535,8 @@
 
     const totalMinutes = {};
     sessions.forEach((s) => {
-      const duration = (Number(s.endTimeMillis) - Number(s.startTimeMillis)) / 60000;
+      const start = Number(s.startTimeMillis);
+      const duration = (Number(s.endTimeMillis) - start) / 60000;
       if (!(duration >= 1)) return;
       const key = dayKey(start);
       totalMinutes[key] = (totalMinutes[key] || 0) + duration;
