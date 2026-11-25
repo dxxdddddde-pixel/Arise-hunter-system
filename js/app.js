@@ -202,23 +202,24 @@
   function applyLiveSnapshot(snapshot, options) {
     const opts = options || {};
     const auto = opts.auto === true;
+    const silent = auto || opts.silent === true;
     let result;
     try {
       result = D.buildLiveResult(snapshot);
     } catch (err) {
       console.error("ARISE live snapshot failed", err);
-      if (!auto) UI.toast("error", "SNAPSHOT FAILED", err && err.message ? err.message : "The live source returned an unreadable snapshot.");
+      if (!silent) UI.toast("error", "SNAPSHOT FAILED", err && err.message ? err.message : "The live source returned an unreadable snapshot.");
       return false;
     }
     if (!Object.keys(result.days).length && !result.workouts.length) {
-      if (!auto) UI.toast("warn", "NO NEW DATA", "Google Health has no records for the requested window yet.");
+      if (!silent) UI.toast("warn", "NO NEW DATA", "Google Health has no records for the requested window yet.");
       return false;
     }
-    if (!auto && Object.keys(state.days).length > 0) {
+    if (!silent && Object.keys(state.days).length > 0) {
       askReplace(result, (incoming) => commitResult(incoming, false, true));
       return false;
     }
-    return commitResult(result, false, true, { silent: auto });
+    return commitResult(result, false, true, { auto, silent });
   }
 
   function levelUpIfNeeded(before, sourceText, quiet) {
@@ -267,10 +268,11 @@
 
   function commitResult(result, demo, live, options) {
     const opts = options || {};
-    const silent = opts.silent === true;
+    const auto = opts.auto === true;
+    const silent = auto || opts.silent === true;
     const before = D.levelInfo(D.totalXp(state)).level;
     state = D.applyImport(state, result);
-    persist(silent ? "health-auto-sync" : "health-sync", "health");
+    persist(silent ? (auto ? "health-auto-sync" : "health-live-sync") : "health-sync", "health");
     UI.render(state);
     if (!silent) UI.setView("status");
     const summary = summarize(result);
@@ -280,12 +282,12 @@
     UI.addLog(
       state,
       "good",
-      (demo ? "Demo archive loaded" : silent ? source + " auto-sync" : live ? source + " live sync" : source + " archive synced") +
+      (demo ? "Demo archive loaded" : silent ? source + (auto ? " auto-sync" : " live sync") : live ? source + " live sync" : source + " archive synced") +
         ": " + result.meta.days + " days, " + result.meta.workouts + " gates, " + result.meta.records + " records."
     );
     if (live && H && typeof H.markSynced === "function") H.markSynced(state.cloud && state.cloud.email);
     if (!silent) sfx.confirm();
-    levelUpIfNeeded(before, silent ? "auto-sync" : demo ? "simulation" : live ? source : "sync", silent);
+    levelUpIfNeeded(before, silent ? (auto ? "auto-sync" : "live sync") : demo ? "simulation" : live ? source : "sync", silent);
     return true;
   }
 
@@ -568,17 +570,18 @@
       if (file) importBackup(file);
     });
 
-    $("#syncBtn").addEventListener("click", () => {
+    function startLiveSync() {
       UI.setView("link");
-      if (H) H.sync();
-    });
+      if (!H) return;
+      if (typeof H.enableLiveSync === "function") H.enableLiveSync();
+      else if (typeof H.toggleAutoSync === "function") H.toggleAutoSync();
+    }
+
+    $("#syncBtn").addEventListener("click", startLiveSync);
 
     $("#demoBtn").addEventListener("click", startDemo);
     $("#emptyDemo").addEventListener("click", startDemo);
-    $("#emptySync").addEventListener("click", () => {
-      UI.setView("link");
-      if (H) H.sync();
-    });
+    $("#emptySync").addEventListener("click", startLiveSync);
 
     $("#gateFilters").addEventListener("click", (e) => {
       const btn = e.target.closest("button[data-filter]");

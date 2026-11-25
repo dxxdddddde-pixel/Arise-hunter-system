@@ -1069,7 +1069,8 @@ a { color: var(--cyan); }
 .health-panel { padding-bottom: 18px; }
 .health-actions .btn:disabled { opacity: 0.38; cursor: not-allowed; }
 .health-actions .btn[hidden] { display: none; }
-.health-actions #healthAutoBtn.is-active { border-color: rgba(84, 255, 193, 0.45); color: var(--green); box-shadow: inset 0 0 0 1px rgba(84, 255, 193, 0.12); }
+.health-actions #healthLiveBtn.is-active { border-color: rgba(84, 255, 193, 0.45); color: var(--green); box-shadow: inset 0 0 0 1px rgba(84, 255, 193, 0.12); }
+.health-actions #healthLiveBtn.is-paused { border-color: rgba(255, 184, 77, 0.45); color: var(--gold); box-shadow: inset 0 0 0 1px rgba(255, 184, 77, 0.12); }
 .archive-panel { padding-bottom: 20px; }
 
 .import-status {

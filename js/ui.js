@@ -341,7 +341,7 @@
     $("#gateCount").textContent = list.length + " RECORDS";
 
     if (!list.length) {
-      $("#gateList").innerHTML = `<div class="empty-list">NO GATES IN THIS WINDOW<br/><button class="btn btn-ghost btn-sm" data-view="link">SYNC GOOGLE HEALTH</button></div>`;
+      $("#gateList").innerHTML = `<div class="empty-list">NO GATES IN THIS WINDOW<br/><button class="btn btn-ghost btn-sm" data-view="link">TURN ON LIVE SYNC</button></div>`;
       return;
     }
 
@@ -501,9 +501,9 @@
       } else if (health && health.authorized) {
         const autoNote = health.autoSync
           ? health.autoSyncPaused
-            ? ` Auto-sync is paused (${esc(health.autoSyncPaused)}); press SYNC GOOGLE HEALTH to resume.`
-            : " Auto-sync refreshes the archive every 15 minutes while this tab is open."
-          : " Press SYNC GOOGLE HEALTH to refresh the archive.";
+            ? ` Live sync is paused (${esc(health.autoSyncPaused)}); press RENEW GOOGLE HEALTH SYNC to resume.`
+            : " Live sync refreshes the archive every minute while this tab is open."
+          : " Press TURN ON GOOGLE HEALTH SYNC to refresh the archive.";
         status.innerHTML = `<div class="import-status-mark">✓</div><div>
              <strong>${health.partial ? "PARTIAL GOOGLE HEALTH LINK" : "GOOGLE HEALTH CONNECTED"}</strong>
              <p>Authorized for this browser session. ${health.partial ? "Some read scopes were not granted, so those metrics stay blank. " : ""}${autoNote}</p>
@@ -516,9 +516,9 @@
       } else if (health && health.lastSyncAt) {
         const autoNote = health.autoSync
           ? health.autoSyncPaused
-            ? ` Auto-sync is paused (${esc(health.autoSyncPaused)}). Press SYNC GOOGLE HEALTH to renew the session.`
-            : " Auto-sync will resume after the next successful SYNC GOOGLE HEALTH."
-          : " Press SYNC GOOGLE HEALTH to refresh your archive.";
+            ? ` Live sync is paused (${esc(health.autoSyncPaused)}). Press RENEW GOOGLE HEALTH SYNC to resume.`
+            : " Live sync will resume after the next successful refresh."
+          : " Press TURN ON GOOGLE HEALTH SYNC to refresh your archive.";
         status.innerHTML = `<div class="import-status-mark">✓</div><div>
              <strong>GOOGLE HEALTH LINKED</strong>
              <p>Authorization is session-only.${autoNote}</p>

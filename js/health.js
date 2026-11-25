@@ -28,8 +28,8 @@
   };
 
   const GIS_TIMEOUT = 10000;
-  const AUTO_SYNC_INTERVAL_MS = 15 * 60 * 1000;
-  const AUTO_TICK_MS = 30000;
+  const AUTO_SYNC_INTERVAL_MS = 60 * 1000;
+  const AUTO_TICK_MS = 10000;
 
   const WINDOW_DAYS = 40;
   const SHORT_WINDOW_DAYS = 14;
@@ -42,6 +42,8 @@
   let tokenClient = null;
   let tokenClientReady = false;
   let pendingAction = "";
+  let pendingQuiet = false;
+  let resumeAttempted = false;
   let signInError = "";
   let status = {
     configured: false,
@@ -217,9 +219,9 @@
     stopAutoTimer();
     autoNextAt = 0;
     if (changed && notify && autoPaused) {
-      UI.toast("warn", "AUTO-SYNC PAUSED", autoPaused === "TOKEN EXPIRED"
-        ? "Press SYNC GOOGLE HEALTH to renew the session. Auto-sync resumes after a successful sync."
-        : "Reconnect Google Health to resume automatic syncing.");
+      UI.toast("warn", "LIVE SYNC PAUSED", autoPaused === "TOKEN EXPIRED"
+        ? "Press RENEW GOOGLE HEALTH SYNC to renew the session. Live sync resumes after a successful sync."
+        : "Turn on Google Health live sync again to resume.");
     }
     emit();
   }
@@ -298,10 +300,10 @@
       return raw + " Check that the Google Health API is enabled, the read scopes are on the consent screen, and the account is a test user if the app is in testing.";
     }
     if (err.status === 401) {
-      return "Google Health authorization expired. Press SYNC GOOGLE HEALTH to authorize again.";
+      return "Google Health authorization expired. Press TURN ON GOOGLE HEALTH SYNC to authorize again.";
     }
     if (/popup_closed_by_user/i.test(raw)) {
-      return "The Google authorization window closed before consent finished. Press SYNC GOOGLE HEALTH to try again.";
+      return "The Google authorization window closed before consent finished. Press TURN ON GOOGLE HEALTH SYNC to try again.";
     }
     if (/access_denied|permission_denied/i.test(raw)) {
       return "Google Health access was not granted. Approve at least one of the three read scopes to sync.";
@@ -332,17 +334,17 @@
     return text;
   }
 
-  /* Auto-sync never opens a modal; repeated failures are logged without repeated toasts. */
+  /* Live sync never opens a modal; repeated failures are logged without repeated toasts. */
   function handleAutoError(err) {
     const text = friendlyError(err);
-    console.error("ARISE Google Health auto-sync failed", err);
+    console.error("ARISE Google Health live sync failed", err);
     if (ctx) {
       const saved = health(ctx.getState());
       saved.lastError = text;
-      ctx.persist("health-auto-error", "settings");
+      ctx.persist("health-live-error", "settings");
     }
-    status.message = "Auto-sync failed · " + text;
-    if (text !== lastAutoError) UI.toast("error", "AUTO-SYNC FAILED", text);
+    status.message = "Live sync failed · " + text;
+    if (text !== lastAutoError) UI.toast("error", "LIVE SYNC FAILED", text);
     lastAutoError = text;
     if (err && err.status === 401) pauseAuto("TOKEN EXPIRED", true);
   }
@@ -385,7 +387,6 @@
       tokenClient = api.initTokenClient({
         client_id: clientId(),
         scope: SCOPES.join(" "),
-        prompt: "consent",
         callback: onTokenResponse
       });
       tokenClientReady = !!tokenClient && typeof tokenClient.requestAccessToken === "function";
@@ -442,55 +443,112 @@
     }
   }
 
+  function finishManagedSync(action) {
+    if (!ctx || typeof ctx.getState !== "function") return;
+    const saved = health(ctx.getState());
+    saved.autoSync = true;
+    ctx.persist("health-live-enabled", "settings");
+    status.message = action === "resume" ? "Google Health live sync resumed" : "Google Health live sync enabled";
+    resumeAuto(true);
+    emit();
+    UI.toast(
+      "success",
+      action === "resume" ? "LIVE SYNC RESUMED" : "GOOGLE HEALTH LIVE SYNC ON",
+      "Syncing now, then every minute while this app is open."
+    );
+    sync({ silent: true });
+  }
+
+  function tokenRequestFailed(err, action, quiet, title) {
+    pendingAction = "";
+    pendingQuiet = false;
+    if (autoEnabled()) pauseAuto(quiet || action === "resume" ? "SIGN IN REQUIRED" : "CONNECT FAILED", false);
+    if (quiet || action === "resume") {
+      signInError = "";
+      status.message = "Google Health live sync needs sign-in";
+      emit();
+      return err && err.message ? err.message : "Google sign-in required";
+    }
+    return handleError(title, err, true);
+  }
+
   function onTokenResponse(response) {
+    const action = pendingAction || "connect";
+    const quiet = pendingQuiet;
+    pendingAction = "";
+    pendingQuiet = false;
+
     if (!response || response.error) {
       const detail = response && (response.error_description || response.error) || "Google authorization was not granted.";
-      pendingAction = "";
-      if (autoEnabled()) pauseAuto("CONNECT FAILED", false);
-      handleError("GOOGLE HEALTH CONNECT FAILED", new Error(detail), true);
+      tokenRequestFailed(new Error(detail), action, quiet, "GOOGLE HEALTH CONNECT FAILED");
       return;
     }
     try {
       applyToken(response);
     } catch (err) {
-      pendingAction = "";
-      if (autoEnabled()) pauseAuto("CONNECT FAILED", false);
-      handleError("GOOGLE HEALTH CONNECT FAILED", err, true);
+      tokenRequestFailed(err, action, quiet, "GOOGLE HEALTH CONNECT FAILED");
       return;
     }
+
     lastAutoError = "";
+    if (action === "enable" || action === "renew" || action === "resume") {
+      finishManagedSync(action);
+      return;
+    }
     if (autoEnabled()) resumeAuto(true);
     emit();
-    const action = pendingAction || "connect";
-    pendingAction = "";
     if (action === "sync") {
       sync();
     } else {
-      UI.toast("success", "GOOGLE HEALTH CONNECTED", "Google Health is authorized. Press SYNC GOOGLE HEALTH to pull your data.");
+      UI.toast("success", "GOOGLE HEALTH CONNECTED", "Google Health is authorized. Tap TURN ON GOOGLE HEALTH SYNC to start live sync.");
     }
   }
 
-  function requestToken(action) {
+  function requestToken(action, options) {
+    const opts = options || {};
+    const quiet = opts.quiet === true;
+    const prompt = opts.prompt === "consent" ? "consent" : "";
+
     if (!refreshConfigured()) {
+      if (quiet) {
+        signInError = "Add healthClientId to firebase-config.js before connecting Google Health.";
+        status.message = signInError;
+        emit();
+        return false;
+      }
       handleError("GOOGLE HEALTH SETUP REQUIRED", new Error("Add healthClientId to firebase-config.js before connecting Google Health."), true);
       return false;
     }
     if (!ensureTokenClient()) {
       signInError = "Google Identity Services could not load. Check your connection and reload. Live sync needs GitHub Pages or http://localhost:8080.";
+      if (quiet) {
+        status.message = signInError;
+        emit();
+        return false;
+      }
       handleError("GOOGLE HEALTH SIGN-IN UNAVAILABLE", new Error(signInError), true);
       emit();
       return false;
     }
+
     pendingAction = action || "connect";
+    pendingQuiet = quiet;
     clearToken();
-    if (autoEnabled()) pauseAuto("AUTHORIZING", false);
-    status.message = "Waiting for Google authorization";
+    if (autoEnabled()) pauseAuto(quiet || action === "resume" ? "SIGN IN REQUIRED" : "AUTHORIZING", false);
+    status.message = quiet ? "Resuming Google Health live sync" : "Waiting for Google authorization";
     emit();
     try {
-      tokenClient.requestAccessToken({ prompt: "consent" });
+      tokenClient.requestAccessToken({ prompt });
       return true;
     } catch (err) {
       pendingAction = "";
+      pendingQuiet = false;
+      if (quiet) {
+        signInError = "";
+        status.message = "Google Health live sync needs sign-in";
+        emit();
+        return false;
+      }
       handleError("GOOGLE HEALTH CONNECT FAILED", err, true);
       return false;
     }
@@ -507,7 +565,7 @@
      --------------------------------------------------------- */
   function api(path, options) {
     if (!hasValidToken()) {
-      throw new Error("Google Health authorization is required. Press SYNC GOOGLE HEALTH to authorize again.");
+      throw new Error("Google Health authorization is required. Press TURN ON GOOGLE HEALTH SYNC to authorize again.");
     }
     const opts = options || {};
     const init = {
@@ -603,7 +661,7 @@
      --------------------------------------------------------- */
   async function loadSnapshot() {
     if (!clientId()) throw new Error("Add healthClientId to firebase-config.js before connecting Google Health.");
-    if (!hasValidToken()) throw new Error("Google Health authorization is required. Press SYNC GOOGLE HEALTH to authorize again.");
+    if (!hasValidToken()) throw new Error("Google Health authorization is required. Press TURN ON GOOGLE HEALTH SYNC to authorize again.");
     if (scopeKnown && !granted.length) throw new Error("No Google Health read scopes were granted. Reconnect and allow at least Activity & Fitness, Sleep, or Health Metrics.");
 
     const startKey = D.keyAdd(D.todayKey(), -(WINDOW_DAYS - 1));
@@ -819,59 +877,102 @@
     emit();
   }
 
-  function connect() {
+  function enableLiveSync() {
     refreshConfigured();
-    if (hasValidToken()) {
-      UI.toast("success", "GOOGLE HEALTH CONNECTED", "Google Health is authorized. Press SYNC GOOGLE HEALTH to pull your data.");
-      return;
+    if (!ctx || typeof ctx.getState !== "function") return false;
+    if (status.syncing) {
+      UI.toast("warn", "SYNC IN PROGRESS", "Wait for the current Google Health sync to finish.");
+      return false;
     }
-    requestToken("connect");
+    if (hasValidToken()) {
+      finishManagedSync("enable");
+      return true;
+    }
+    const prompt = health(ctx.getState()).lastSyncAt ? "" : "consent";
+    return requestToken("enable", { prompt });
+  }
+
+  function renewLiveSync() {
+    refreshConfigured();
+    if (!ctx || typeof ctx.getState !== "function") return false;
+    if (status.syncing) {
+      UI.toast("warn", "SYNC IN PROGRESS", "Wait for the current Google Health sync to finish.");
+      return false;
+    }
+    if (hasValidToken()) {
+      finishManagedSync("resume");
+      return true;
+    }
+    const prompt = health(ctx.getState()).lastSyncAt ? "" : "consent";
+    return requestToken("renew", { prompt });
+  }
+
+  function disableLiveSync() {
+    if (!ctx || typeof ctx.getState !== "function") return false;
+    const saved = health(ctx.getState());
+    saved.autoSync = false;
+    stopAutoTimer();
+    autoPaused = "";
+    autoNextAt = 0;
+    ctx.persist("health-live-disabled", "settings");
+    status.message = "Google Health live sync disabled";
+    emit();
+    UI.toast("warn", "LIVE SYNC OFF", "Google Health will only refresh when you turn live sync back on.");
+    return true;
+  }
+
+  function connect() {
+    return enableLiveSync();
   }
 
   async function sync(options) {
-    const auto = !!(options && options.auto);
+    const opts = options || {};
+    const auto = opts.auto === true;
+    const silent = auto === true || opts.silent === true;
+    const managed = auto || silent;
     if (status.syncing) {
-      if (!auto) UI.toast("warn", "SYNC IN PROGRESS", "Wait for the current Google Health sync to finish.");
+      if (!managed) UI.toast("warn", "SYNC IN PROGRESS", "Wait for the current Google Health sync to finish.");
       return false;
     }
     status.apiPartial = false;
     refreshConfigured();
     if (!hasValidToken()) {
-      if (auto) pauseAuto("TOKEN EXPIRED", true);
+      if (managed) pauseAuto("TOKEN EXPIRED", auto === true);
       else requestToken("sync");
       return false;
     }
 
     status.syncing = true;
-    status.message = auto ? "Reading Google Health data · auto-sync" : "Reading Google Health data";
+    status.message = auto ? "Reading Google Health data · auto-sync" : silent ? "Reading Google Health data · live sync" : "Reading Google Health data";
     emit();
     try {
       const snapshot = await loadSnapshot();
       const hasData = snapshotHasData(snapshot);
       const signature = hasData ? snapshotSignature(snapshot) : "";
 
-      if (auto && signature && signature === lastSnapshotSignature) {
+      if (managed && signature && signature === lastSnapshotSignature) {
         lastAutoError = "";
         if (ctx && typeof ctx.getState === "function") {
-          UI.addLog(ctx.getState(), "good", "Google Health auto-sync: no changes detected.");
+          UI.addLog(ctx.getState(), "good", (auto ? "Google Health auto-sync" : "Google Health live sync") + ": no changes detected.");
         }
-        markSynced(null, "Google Health auto-synced · no changes");
+        markSynced(null, auto ? "Google Health auto-synced · no changes" : "Google Health live-synced · no changes");
         if (autoEnabled()) resumeAuto(true);
         return true;
       }
       if (hasData) lastSnapshotSignature = signature;
 
       const applied = ctx && typeof ctx.applySnapshot === "function"
-        ? ctx.applySnapshot(snapshot, { auto })
+        ? ctx.applySnapshot(snapshot, { auto, silent })
         : false;
-      if (applied || auto) lastAutoError = "";
+      if (applied || managed) lastAutoError = "";
       status.message = applied
-        ? (auto ? "Google Health auto-synced" : status.partial ? "Google Health synced · partial data" : "Google Health synced")
-        : "Review the replacement prompt to finish syncing";
+        ? (auto ? "Google Health auto-synced" : silent ? "Google Health live-synced" : status.partial ? "Google Health synced · partial data" : "Google Health synced")
+        : managed ? "Google Health live sync found no new data" : "Review the replacement prompt to finish syncing";
       if (autoEnabled()) resumeAuto(true);
       return applied;
     } catch (err) {
       if (auto) handleAutoError(err);
+      else if (silent) handleError("GOOGLE HEALTH LIVE SYNC FAILED", err, false);
       else handleError("GOOGLE HEALTH SYNC FAILED", err, true);
       return false;
     } finally {
@@ -881,43 +982,8 @@
   }
 
   function toggleAutoSync() {
-    if (!ctx || typeof ctx.getState !== "function") return;
-    const saved = health(ctx.getState());
-
-    if (saved.autoSync) {
-      saved.autoSync = false;
-      stopAutoTimer();
-      autoPaused = "";
-      autoNextAt = 0;
-      ctx.persist("health-auto-disabled", "settings");
-      status.message = "Google Health auto-sync disabled";
-      emit();
-      UI.toast("warn", "AUTO-SYNC OFF", "Google Health will only refresh when you press SYNC GOOGLE HEALTH.");
-      return;
-    }
-
-    UI.openModal({
-      title: "Enable Google Health Auto-Sync?",
-      body: "<p>ARISE will check Google Health every <strong>15 minutes</strong> while this tab is open. Each refresh silently replaces the health archive; your hunter identity, claimed XP, Training Grounds, Body Log, Strength Log, Cloud Link and link settings are preserved.</p>" +
-        "<p>Auto-sync never opens Google consent by itself. If the session token expires, it pauses until you press <strong>SYNC GOOGLE HEALTH</strong>. Nothing syncs while the app is closed.</p>",
-      actions: [
-        { label: "CANCEL" },
-        {
-          label: "ENABLE AUTO-SYNC",
-          kind: "primary",
-          onClick: () => {
-            const current = health(ctx.getState());
-            current.autoSync = true;
-            ctx.persist("health-auto-enabled", "settings");
-            status.message = "Google Health auto-sync enabled";
-            UI.toast("success", "AUTO-SYNC ON", "ARISE will refresh Google Health every 15 minutes while this tab is open.");
-            if (hasValidToken()) resumeAuto(true);
-            else pauseAuto("SIGN IN REQUIRED", false);
-            emit();
-          }
-        }
-      ]
-    });
+    if (!ctx || typeof ctx.getState !== "function") return false;
+    return health(ctx.getState()).autoSync ? disableLiveSync() : enableLiveSync();
   }
 
   function disconnect() {
@@ -946,10 +1012,13 @@
               }
             }
             clearToken();
-            pauseAuto("DISCONNECTED", false);
+            stopAutoTimer();
+            autoPaused = "";
+            autoNextAt = 0;
             status.message = "Google Health disconnected";
             if (ctx) {
               const saved = health(ctx.getState());
+              saved.autoSync = false;
               saved.lastSyncAt = null;
               saved.email = null;
               saved.lastError = null;
@@ -957,7 +1026,7 @@
               ctx.persist("health-disconnected", "settings");
             }
             emit();
-            UI.toast("warn", "GOOGLE HEALTH DISCONNECTED", "Local data was kept. Reconnect when you want another sync.");
+            UI.toast("warn", "GOOGLE HEALTH DISCONNECTED", "Local data was kept. Turn live sync back on when you want another sync.");
           }
         }
       ]
@@ -975,15 +1044,14 @@
     const account = $("#healthAccountText");
     const last = $("#healthLastSyncText");
     const note = $("#healthNote");
-    const connectBtn = $("#healthConnectBtn");
-    const syncBtn = $("#healthSyncBtn");
     const disconnectBtn = $("#healthDisconnectBtn");
     const autoText = $("#healthAutoSyncText");
     const nextText = $("#healthNextSyncText");
-    const autoBtn = $("#healthAutoBtn");
+    const liveBtn = $("#healthLiveBtn");
+    const liveOffBtn = $("#healthLiveOffBtn");
 
     let label = "READY";
-    let detail = "Authorize Google Health, then sync the last 40 days of available data.";
+    let detail = "Turn on live sync to refresh the last 40 days every minute while this app is open.";
     if (!current.configured) {
       label = "SETUP REQUIRED";
       detail = "Add healthClientId to firebase-config.js and enable the Google Health API for that OAuth client.";
@@ -1003,18 +1071,20 @@
         reasons.push("Missing: " + current.missingScopes.map((scope) => SCOPE_LABELS[scope] || scope).join(", "));
       }
       if (current.apiPartial) reasons.push("Some Google Health endpoints returned errors");
-      label = "PARTIAL LINK";
+      label = current.autoSync ? "LIVE · PARTIAL" : "PARTIAL LINK";
       detail = (reasons.length ? reasons.join(". ") + ". " : "") + "Unavailable metrics stay blank.";
     } else if (current.authorized) {
-      label = "CONNECTED";
+      label = current.autoSync ? "LIVE" : "CONNECTED";
       detail = current.autoSync
-        ? "Google Health is authorized. Auto-sync refreshes every 15 minutes while this tab is open."
-        : "Google Health is authorized. Press SYNC GOOGLE HEALTH to refresh your archive.";
+        ? current.autoSyncPaused
+          ? "Live sync paused: " + current.autoSyncPaused + ". Tap RENEW GOOGLE HEALTH SYNC to resume."
+          : "Google Health live sync is on. It refreshes every minute while this app is open."
+        : "Google Health is authorized. Tap TURN ON GOOGLE HEALTH SYNC to start live sync.";
     } else if (saved.lastSyncAt) {
       label = "LINKED";
       detail = current.autoSync && current.autoSyncPaused
-        ? "Auto-sync paused: " + current.autoSyncPaused + ". Press SYNC GOOGLE HEALTH to renew the session and resume."
-        : "The access token is session-only. Press SYNC GOOGLE HEALTH to authorize and refresh.";
+        ? "Live sync paused: " + current.autoSyncPaused + ". Tap RENEW GOOGLE HEALTH SYNC to resume."
+        : "The access token is session-only. Tap TURN ON GOOGLE HEALTH SYNC to resume live sync.";
     }
 
     if (statusEl) statusEl.textContent = label;
@@ -1032,12 +1102,10 @@
     if (account) account.textContent = saved.email || (current.authorized ? "GOOGLE ACCOUNT" : "NOT LINKED");
     if (last) last.textContent = D.fmtDateTime(saved.lastSyncAt ? new Date(saved.lastSyncAt).toISOString() : null);
     if (note) note.textContent = detail;
-    if (connectBtn) connectBtn.disabled = !current.ready || current.authorized;
-    if (syncBtn) syncBtn.disabled = !current.ready || current.syncing;
     if (disconnectBtn) disconnectBtn.hidden = !saved.lastSyncAt && !current.authorized;
     if (autoText) {
       autoText.textContent = !current.autoSync ? "OFF"
-        : current.autoSyncPaused ? "ON · " + current.autoSyncPaused : "ON · EVERY 15 MIN";
+        : current.autoSyncPaused ? "ON · " + current.autoSyncPaused : "ON · EVERY 1 MIN";
       autoText.classList.toggle("is-paused", !!current.autoSync && !!current.autoSyncPaused);
     }
     if (nextText) {
@@ -1045,18 +1113,38 @@
         : current.autoSyncPaused ? current.autoSyncPaused
         : current.nextSyncAt ? "IN " + formatCountdown(current.nextSyncAt - Date.now()) : "PENDING";
     }
-    if (autoBtn) {
-      autoBtn.textContent = current.autoSync ? "DISABLE AUTO-SYNC" : "ENABLE AUTO-SYNC";
-      autoBtn.classList.toggle("is-active", current.autoSync);
-      autoBtn.setAttribute("aria-pressed", current.autoSync ? "true" : "false");
+    if (liveBtn) {
+      liveBtn.textContent = !current.autoSync ? "TURN ON GOOGLE HEALTH SYNC"
+        : current.autoSyncPaused ? "RENEW GOOGLE HEALTH SYNC"
+        : "SYNC GOOGLE HEALTH NOW";
+      liveBtn.disabled = !current.ready || current.syncing || !!pendingAction;
+      liveBtn.classList.toggle("is-active", !!current.autoSync);
+      liveBtn.classList.toggle("is-paused", !!current.autoSync && !!current.autoSyncPaused);
+      liveBtn.setAttribute("aria-pressed", current.autoSync ? "true" : "false");
     }
+    if (liveOffBtn) {
+      liveOffBtn.hidden = !current.autoSync;
+      liveOffBtn.disabled = current.syncing || !!pendingAction;
+    }
+  }
+
+  function handleLiveButton() {
+    if (!ctx || typeof ctx.getState !== "function") return;
+    if (!health(ctx.getState()).autoSync) {
+      enableLiveSync();
+      return;
+    }
+    if (publicStatus().autoSyncPaused) {
+      renewLiveSync();
+      return;
+    }
+    sync({ silent: true });
   }
 
   function bindStatic() {
     const map = {
-      "#healthConnectBtn": connect,
-      "#healthSyncBtn": () => { sync(); },
-      "#healthAutoBtn": toggleAutoSync,
+      "#healthLiveBtn": handleLiveButton,
+      "#healthLiveOffBtn": disableLiveSync,
       "#healthDisconnectBtn": disconnect
     };
     Object.keys(map).forEach((selector) => {
@@ -1079,8 +1167,7 @@
     }
 
     if (autoEnabled()) {
-      if (hasValidToken()) resumeAuto(false);
-      else pauseAuto("SIGN IN REQUIRED", false);
+      pauseAuto("SIGN IN REQUIRED", false);
     } else {
       stopAutoTimer();
       autoPaused = "";
@@ -1096,6 +1183,10 @@
         status.ready = false;
       }
       emit();
+      if (ok && autoEnabled() && !hasValidToken() && !pendingAction && !resumeAttempted) {
+        resumeAttempted = true;
+        requestToken("resume", { prompt: "", quiet: true });
+      }
     });
   }
 
@@ -1106,6 +1197,9 @@
     connect,
     sync,
     disconnect,
+    enableLiveSync,
+    renewLiveSync,
+    disableLiveSync,
     toggleAutoSync,
     markSynced,
     render,

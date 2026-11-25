@@ -18,7 +18,7 @@ No build step. The demo runs by opening `index.html`; live Google Health sync ne
 3. Either:
    - click **LOAD DEMO** to preview 40 days of realistic health data, or
    - publish to GitHub Pages (or serve locally on port 8080), configure Google Health below, then
-     click **SYNC GOOGLE HEALTH** to pull up to 40 days of available data.
+     click **TURN ON GOOGLE HEALTH SYNC** to pull up to 40 days of available data.
 
 Everything is stored in `localStorage` under `arise-hunter-system-v1`. Health data is not uploaded
 unless you enable optional Firebase Cloud Link. **Google OAuth will not complete from `file://`** —
@@ -108,42 +108,38 @@ add a client secret to a static site.
 
 ### 3. Sync
 
-1. Open **Data Link → Google Health Uplink** and press **CONNECT GOOGLE HEALTH**.
-2. Press **SYNC GOOGLE HEALTH**. The app reads daily rollups and summaries for the last 40 days:
-   steps, active/total calories, active minutes, heart rate, core/body temperature, HRV, resting HR,
-   respiratory rate, VO₂ max, sleep and workouts.
-3. If an archive already exists, confirm **REPLACE ARCHIVE**. Your hunter name, claimed quest XP,
-   audio setting, Training Grounds protocol, Body Log, Strength Log, Cloud Link state and health-link
-   metadata are preserved.
-4. Press **SYNC GOOGLE HEALTH** again for a refresh. The access token is kept in memory only; after a
-   reload or token expiry, Google reuses your saved consent and returns a new token when you press the
-   button again. The last sync time and granted-scope record stay in local state.
+1. Open **Data Link → Google Health Uplink** and press **TURN ON GOOGLE HEALTH SYNC**.
+2. Approve at least one of the three read scopes. ARISE immediately reads daily rollups and summaries
+   for the last 40 days: steps, active/total calories, active minutes, heart rate, core/body temperature,
+   HRV, resting HR, respiratory rate, VO₂ max, sleep and workouts.
+3. Turning on live sync is the explicit confirmation. There is no **REPLACE ARCHIVE** prompt afterward.
+   Your hunter name, claimed quest XP, audio setting, Training Grounds protocol, Body Log, Strength Log,
+   Cloud Link state and health-link metadata are preserved.
+4. The archive refreshes every **minute** while the tab/app is open. The Data Link panel shows
+   `LIVE SYNC`, `NEXT SYNC` and the current countdown. Press **TURN OFF** to stop refreshing.
 
-### Automatic refresh (optional)
+### Live sync behavior
 
-Press **ENABLE AUTO-SYNC** in the Google Health Uplink panel to refresh the archive automatically every
-**15 minutes while the tab/app is open**. The Data Link panel shows `AUTO-SYNC`, `NEXT SYNC` and the
-current countdown.
-
-- The first manual sync is still how you grant consent and confirm replacement. After that, auto-sync
-  replaces the health archive silently; hunter identity, claimed XP, audio setting, Training Grounds,
-  Body Log, Strength Log, Cloud Link and health-link metadata are preserved.
+- Live sync stores only the ON/OFF preference in local state. The access token is kept in memory only.
+- On reopen, ARISE tries to resume silently with the existing Google browser session. If Google cannot
+  issue a token silently, the panel shows `ON · SIGN IN REQUIRED`; press **RENEW GOOGLE HEALTH SYNC**
+  once to authorize again.
 - If the snapshot is unchanged, ARISE only updates the sync timestamp and System Feed — it does not
   rewrite the archive or re-upload to Cloud Link.
-- Auto-sync never opens a Google consent popup by itself. If the browser token expires, the panel shows
-  `AUTO-SYNC PAUSED`; press **SYNC GOOGLE HEALTH** once to renew and the timer resumes.
 - If the tab is hidden, the browser may delay timers. ARISE performs one catch-up sync when you return.
-- Nothing syncs while the browser/app is closed. Closed-app background sync would need a backend with a
-  stored refresh token and client secret, which this static site deliberately does not have.
-- Press **DISABLE AUTO-SYNC** to stop the timer. The setting survives backup export/restore and archive
-  purge; **DISCONNECT** pauses auto-sync until you reconnect.
+- Nothing syncs while the browser/app is closed. On iPhone, the home-screen web app has its own storage
+  and Google session; use it as the installed app and sync Cloud Link to move data between browsers.
+- Closed-app background sync would need a backend with a stored refresh token and client secret, which
+  this static site deliberately does not have.
+- **DISCONNECT** clears the local health link, revokes the active token and turns live sync off. Local
+  hunter data is kept.
 
 ### Partial consent is supported
 
 You may grant any subset of the three scopes. The status chip shows **PARTIAL HEALTH LINK**, and only
 the granted metrics populate; the rest stay blank rather than failing the whole sync. To add scopes
-later, press **SYNC GOOGLE HEALTH** again and approve the additional access. The app asks for all
-three scopes each time and reads the actually granted scopes from the token response.
+later, press **RENEW GOOGLE HEALTH SYNC** and approve the additional access. The app asks for all
+three scopes when you authorize and reads the actually granted scopes from the token response.
 
 ### What Google Health can supply
 
@@ -174,11 +170,11 @@ data will not appear.
 - **"SETUP REQUIRED"** — `healthClientId` is empty or still a placeholder.
 - **`origin_mismatch` / `invalid_client`** — use a **Web application** client and register
   `https://dxxdddddde-pixel.github.io` under **Authorized JavaScript origins**. No repo path.
-- **`client_secret is missing`** — an old code-flow build is cached. Reload to pick up `v17`; this
+- **`client_secret is missing`** — an old code-flow build is cached. Reload to pick up `v18`; this
   version never calls the token endpoint and never uses a secret.
 - **403 / permission error** — enable the Google Health API, add the scopes to the consent screen,
   and add your account as a test user while the app is in testing.
-- **401 / "authorization expired"** — press **SYNC GOOGLE HEALTH** to authorize again.
+- **401 / "authorization expired"** — press **RENEW GOOGLE HEALTH SYNC** to authorize again.
 - **`ACCOUNT_NOT_LINKED`** — the Google account is not linked to Google Health. Link it in the
   Google Health / Fitbit app first.
 - **"PARTIAL HEALTH LINK"** — some grants are missing. Reconnect and approve the missing scopes.
@@ -444,8 +440,8 @@ respects `prefers-reduced-motion` for particles and animations.
 
 - Google Health is read directly by your browser with an access token that is kept in memory for the
   current session only; no token, authorization code or client secret is stored in this repository.
-- Auto-sync stores only the ON/OFF preference in local state. The token and countdown are memory-only,
-  so a reload pauses auto-sync until you press **SYNC GOOGLE HEALTH** again.
+- Live sync stores only the ON/OFF preference in local state. The token and countdown are memory-only.
+  A reload tries a silent Google resume; if that fails, press **RENEW GOOGLE HEALTH SYNC** once.
 - Google Identity Services handles consent in a popup and returns the granted scopes with the token.
   Nothing is written to `sessionStorage` for the Health link.
 - Health data is processed locally. It is never uploaded to ARISE and is not uploaded to Firebase
@@ -467,12 +463,12 @@ respects `prefers-reduced-motion` for particles and animations.
 | --- | --- |
 | OAuth never returns from `file://` | Use GitHub Pages or `http://localhost:8080` |
 | `origin_mismatch` / `invalid_client` | Register the site origin as an Authorized JavaScript origin |
-| `client_secret is missing` | Reload for `v17`; the old code-flow build is cached |
+| `client_secret is missing` | Reload for `v18`; the old code-flow build is cached |
 | "SETUP REQUIRED" | Add `healthClientId` (or `googleClientId`) in `firebase-config.js` |
 | 403 / permission error | Enable the Google Health API, add the read scopes, and add the account as a test user |
 | `ACCOUNT_NOT_LINKED` | Link the Google account inside the Google Health / Fitbit app first |
 | "PARTIAL HEALTH LINK" | Reconnect and approve the missing Activity, Sleep or Health Metrics scope |
-| `AUTO-SYNC PAUSED` / `SIGN IN REQUIRED` | Press **SYNC GOOGLE HEALTH** once; the timer resumes after a successful sync |
+| `LIVE SYNC PAUSED` / `SIGN IN REQUIRED` | Press **RENEW GOOGLE HEALTH SYNC** once; the 1-minute timer resumes after a successful sync |
 | "NO GOOGLE HEALTH DATA" | Confirm the source app has written supported records into Google Health in the last 40 days |
 | "Save failed — storage is full" | Use **Export Backup**, then **Purge Data**, then sync a smaller source window |
 | Archive disappears after closing the tab | Some browsers do not persist `file://` storage; use GitHub Pages or `localhost` |
@@ -498,7 +494,7 @@ js/training.js      weekly plan builder, set ledger, 1RM, overload, charts, PRs
 js/body.js          biometric checkpoints, calculated steps, monthly strength peaks, notification toggle
 js/merge.js         section-level cloud merge, tombstones and deterministic signatures
 js/cloud.js         Google sign-in, live Firestore listener, automatic snapshot sync, restore
-js/health.js        Google Health GIS token flow, 15-minute auto-sync + REST mapping into the live snapshot pipeline
+js/health.js        Google Health GIS token flow, 1-minute live sync + REST mapping into the live snapshot pipeline
 js/app.js           boot, event wiring, backup export/restore, Google Health sync
 assets/fonts/       self-hosted fonts
 assets/icons/       PWA + Apple touch icons

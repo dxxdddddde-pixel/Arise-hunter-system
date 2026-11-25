@@ -15,7 +15,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="assets/fonts.css" />
-  <link rel="stylesheet" href="styles.css?v=17" />
+  <link rel="stylesheet" href="styles.css?v=18" />
 </head>
 <body data-rank="E">
   <canvas id="fx" aria-hidden="true"></canvas>
@@ -198,10 +198,10 @@
             <div class="empty-copy">
               <p class="eyebrow">NO SIGNAL DETECTED</p>
               <h3>The System awaits your first sync.</h3>
-              <p>Connect Google Health to awaken your status window, or load a simulated hunter archive to preview the interface.</p>
+              <p>Turn on Google Health live sync to awaken your status window, or load a simulated hunter archive to preview the interface.</p>
             </div>
             <div class="empty-actions">
-              <button class="btn btn-primary" id="emptySync">SYNC GOOGLE HEALTH</button>
+              <button class="btn btn-primary" id="emptySync">ENABLE LIVE SYNC</button>
               <button class="btn btn-ghost" id="emptyDemo">LOAD DEMO</button>
             </div>
           </div>
@@ -754,7 +754,7 @@
                   <strong id="healthLastSyncText">NEVER</strong>
                 </div>
                 <div class="link-detail">
-                  <span>AUTO-SYNC</span>
+                  <span>LIVE SYNC</span>
                   <strong id="healthAutoSyncText">OFF</strong>
                 </div>
                 <div class="link-detail">
@@ -762,11 +762,10 @@
                   <strong id="healthNextSyncText">—</strong>
                 </div>
 
-                <p class="cloud-note" id="healthNote">Authorize Google Health, then sync the last 40 days of available data.</p>
+                <p class="cloud-note" id="healthNote">Turn on live sync to refresh the last 40 days every minute while this app is open.</p>
                 <div class="link-actions health-actions">
-                  <button class="btn btn-primary btn-sm" id="healthConnectBtn" type="button">CONNECT GOOGLE HEALTH</button>
-                  <button class="btn btn-ghost btn-sm" id="healthSyncBtn" type="button">SYNC GOOGLE HEALTH</button>
-                  <button class="btn btn-ghost btn-sm" id="healthAutoBtn" type="button" aria-pressed="false">ENABLE AUTO-SYNC</button>
+                  <button class="btn btn-primary btn-sm" id="healthLiveBtn" type="button" aria-pressed="false">TURN ON GOOGLE HEALTH SYNC</button>
+                  <button class="btn btn-ghost btn-sm" id="healthLiveOffBtn" type="button" hidden>TURN OFF</button>
                   <button class="btn btn-danger btn-sm" id="healthDisconnectBtn" type="button" hidden>DISCONNECT</button>
                 </div>
               </article>
@@ -1051,14 +1050,14 @@
   <input type="file" id="backupInput" accept=".json,application/json" hidden />
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="firebase-config.js?v=17"></script>
-  <script src="js/data.js?v=17"></script>
-  <script src="js/ui.js?v=17"></script>
-  <script src="js/training.js?v=17"></script>
-  <script src="js/body.js?v=17"></script>
-  <script src="js/merge.js?v=17"></script>
-  <script src="js/cloud.js?v=17"></script>
-  <script src="js/health.js?v=17"></script>
-  <script src="js/app.js?v=17"></script>
+  <script src="firebase-config.js?v=18"></script>
+  <script src="js/data.js?v=18"></script>
+  <script src="js/ui.js?v=18"></script>
+  <script src="js/training.js?v=18"></script>
+  <script src="js/body.js?v=18"></script>
+  <script src="js/merge.js?v=18"></script>
+  <script src="js/cloud.js?v=18"></script>
+  <script src="js/health.js?v=18"></script>
+  <script src="js/app.js?v=18"></script>
 </body>
 </html>
