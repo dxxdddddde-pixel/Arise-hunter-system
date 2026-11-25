@@ -318,7 +318,7 @@
     if (ctx) {
       const saved = health(ctx.getState());
       saved.lastError = text;
-      ctx.persist();
+      ctx.persist("health-error", "settings");
     }
     emit();
     UI.toast("error", title, text);
@@ -339,7 +339,7 @@
     if (ctx) {
       const saved = health(ctx.getState());
       saved.lastError = text;
-      ctx.persist("health-auto-error");
+      ctx.persist("health-auto-error", "settings");
     }
     status.message = "Auto-sync failed · " + text;
     if (text !== lastAutoError) UI.toast("error", "AUTO-SYNC FAILED", text);
@@ -438,7 +438,7 @@
       const saved = health(ctx.getState());
       saved.lastError = null;
       saved.scopes = granted.slice();
-      ctx.persist();
+      ctx.persist("health-connected", "settings");
     }
   }
 
@@ -814,7 +814,7 @@
     if (email) saved.email = email;
     saved.lastError = null;
     saved.scopes = granted.slice();
-    ctx.persist("health-synced");
+    ctx.persist("health-synced", "settings");
     status.message = message || (status.partial ? "Google Health synced · partial data" : "Google Health synced");
     emit();
   }
@@ -889,7 +889,7 @@
       stopAutoTimer();
       autoPaused = "";
       autoNextAt = 0;
-      ctx.persist("health-auto-disabled");
+      ctx.persist("health-auto-disabled", "settings");
       status.message = "Google Health auto-sync disabled";
       emit();
       UI.toast("warn", "AUTO-SYNC OFF", "Google Health will only refresh when you press SYNC GOOGLE HEALTH.");
@@ -908,7 +908,7 @@
           onClick: () => {
             const current = health(ctx.getState());
             current.autoSync = true;
-            ctx.persist("health-auto-enabled");
+            ctx.persist("health-auto-enabled", "settings");
             status.message = "Google Health auto-sync enabled";
             UI.toast("success", "AUTO-SYNC ON", "ARISE will refresh Google Health every 15 minutes while this tab is open.");
             if (hasValidToken()) resumeAuto(true);
@@ -954,7 +954,7 @@
               saved.email = null;
               saved.lastError = null;
               saved.scopes = [];
-              ctx.persist();
+              ctx.persist("health-disconnected", "settings");
             }
             emit();
             UI.toast("warn", "GOOGLE HEALTH DISCONNECTED", "Local data was kept. Reconnect when you want another sync.");

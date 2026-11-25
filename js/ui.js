@@ -565,14 +565,16 @@
     }).join("");
   }
 
-  function addLog(state, type, msg) {
+  function addLog(state, type, msg, source) {
     state.logs = state.logs || [];
     state.logs.unshift({ at: new Date().toISOString(), type, msg });
     state.logs = state.logs.slice(0, 36);
     D.saveState(state);
     renderLog(state);
     if (typeof window.dispatchEvent === "function") {
-      window.dispatchEvent(new CustomEvent("arise:state-changed"));
+      window.dispatchEvent(new CustomEvent("arise:state-changed", {
+        detail: { source: source || "local", at: Date.now() }
+      }));
     }
   }
 

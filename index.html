@@ -15,7 +15,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="assets/fonts.css" />
-  <link rel="stylesheet" href="styles.css?v=16" />
+  <link rel="stylesheet" href="styles.css?v=17" />
 </head>
 <body data-rank="E">
   <canvas id="fx" aria-hidden="true"></canvas>
@@ -660,8 +660,7 @@
               </span>
               <span class="body-reminder-next" id="bodyReminderNext">CHECKPOINT DUE · ALERT EVERY 2H</span>
               <span class="panel-head-actions body-reminder-actions">
-                <button class="btn btn-ghost btn-sm" id="bodyNotifyBtn">ENABLE ALERTS</button>
-                <button class="btn btn-ghost btn-sm" id="bodyTestReminderBtn">TEST ALERT</button>
+                <button class="btn btn-ghost btn-sm" id="bodyNotifyBtn">NOTIFICATIONS ON</button>
                 <button class="btn btn-ghost btn-sm" id="bodyReminderToggle">PAUSE</button>
               </span>
             </div>
@@ -772,57 +771,7 @@
                 </div>
               </article>
 
-              <article class="panel archive-panel">
-                <div class="panel-head">
-                  <div>
-                    <p class="eyebrow">ARCHIVE STATE</p>
-                    <h3>Live Snapshot</h3>
-                  </div>
-                  <span class="panel-code">LINK-01</span>
-                </div>
 
-                <div class="import-status" id="importStatus">
-                  <div class="import-status-mark" aria-hidden="true">!</div>
-                  <div>
-                    <strong>NO ARCHIVE DETECTED</strong>
-                    <p>Connect Google Health and sync at least one day of data to initialize scores, stats and quests.</p>
-                  </div>
-                </div>
-                <div class="link-actions">
-                  <button class="btn btn-ghost" id="demoBtn" type="button">LOAD DEMO ARCHIVE</button>
-                </div>
-
-                <div class="methods">
-                  <div class="method">
-                    <span class="method-num">01</span>
-                    <div>
-                      <h4>Google Health first</h4>
-                      <p>Use <em>CONNECT GOOGLE HEALTH</em> and <em>SYNC GOOGLE HEALTH</em> to pull steps, calories, sleep, heart rate, temperature, HRV and workouts directly from your Google Health profile.</p>
-                    </div>
-                  </div>
-                  <div class="method">
-                    <span class="method-num">02</span>
-                    <div>
-                      <h4>Apple Health on iPhone</h4>
-                      <p>Apple Health data must first appear inside the <em>Google Health</em> / Fitbit app. ARISE reads only the categories Google already has; it cannot read Apple Health directly.</p>
-                    </div>
-                  </div>
-                  <div class="method">
-                    <span class="method-num">03</span>
-                    <div>
-                      <h4>Partial consent is supported</h4>
-                      <p>Grant any subset of Activity, Sleep and Health Metrics. Granted metrics populate normally; the rest stay blank until you grant their scopes.</p>
-                    </div>
-                  </div>
-                  <div class="method">
-                    <span class="method-num">04</span>
-                    <div>
-                      <h4>Optional auto-sync</h4>
-                      <p>Enable <em>AUTO-SYNC</em> to refresh the archive every 15 minutes while this tab is open. It pauses when the session token expires and never opens consent by itself.</p>
-                    </div>
-                  </div>
-                </div>
-              </article>
             </div>
 
             <div class="link-side">
@@ -860,46 +809,6 @@
                 </div>
               </article>
 
-              <article class="panel install-panel">
-                <div class="panel-head">
-                  <div>
-                    <p class="eyebrow">iPHONE // SAFARI</p>
-                    <h3>Add to Home Screen</h3>
-                  </div>
-                  <span class="panel-code">PWA</span>
-                </div>
-                <div class="methods">
-                  <div class="method">
-                    <span class="method-num">01</span>
-                    <div>
-                      <h4>Push to GitHub</h4>
-                      <p>Upload this folder to a GitHub repository, then open <strong>Settings → Pages</strong> and deploy from <strong>main / root</strong>.</p>
-                    </div>
-                  </div>
-                  <div class="method">
-                    <span class="method-num">02</span>
-                    <div>
-                      <h4>Open in Safari</h4>
-                      <p>Visit <code>https://&lt;username&gt;.github.io/&lt;repo&gt;/</code> on your iPhone in <strong>Safari</strong>. The first load needs internet; then it works offline.</p>
-                    </div>
-                  </div>
-                  <div class="method">
-                    <span class="method-num">03</span>
-                    <div>
-                      <h4>Install</h4>
-                      <p>Tap <strong>Share → Add to Home Screen → Add</strong>. Launch ARISE from the new icon — it opens full-screen like an app.</p>
-                    </div>
-                  </div>
-                  <div class="method">
-                    <span class="method-num">04</span>
-                    <div>
-                      <h4>Move your data</h4>
-                      <p>Sign in with Google in <strong>Cloud Link</strong> to sync automatically, or use <strong>Export Backup</strong> and <strong>Import Backup</strong> for a one-time transfer.</p>
-                    </div>
-                  </div>
-                </div>
-              </article>
-
               <article class="panel">
                 <div class="panel-head">
                   <div>
@@ -925,6 +834,21 @@
                   <strong id="archiveRange">—</strong>
                 </div>
                 <div class="signal-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+              </article>
+
+              <article class="panel test-panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="eyebrow">DIAGNOSTICS</p>
+                    <h3>Test Window</h3>
+                  </div>
+                  <span class="panel-code">TEST</span>
+                </div>
+                <div class="test-actions">
+                  <button class="btn btn-ghost btn-sm" id="demoBtn" type="button">LOAD DEMO ARCHIVE</button>
+                  <button class="btn btn-ghost btn-sm" id="bodyTestReminderBtn" type="button">TEST ALERT</button>
+                  <button class="btn btn-ghost btn-sm" id="linkNotifyBtn" type="button" aria-pressed="true">NOTIFICATIONS ON</button>
+                </div>
               </article>
 
               <article class="panel">
@@ -1127,13 +1051,14 @@
   <input type="file" id="backupInput" accept=".json,application/json" hidden />
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="firebase-config.js?v=16"></script>
-  <script src="js/data.js?v=16"></script>
-  <script src="js/ui.js?v=16"></script>
-  <script src="js/training.js?v=16"></script>
-  <script src="js/body.js?v=16"></script>
-  <script src="js/cloud.js?v=16"></script>
-  <script src="js/health.js?v=16"></script>
-  <script src="js/app.js?v=16"></script>
+  <script src="firebase-config.js?v=17"></script>
+  <script src="js/data.js?v=17"></script>
+  <script src="js/ui.js?v=17"></script>
+  <script src="js/training.js?v=17"></script>
+  <script src="js/body.js?v=17"></script>
+  <script src="js/merge.js?v=17"></script>
+  <script src="js/cloud.js?v=17"></script>
+  <script src="js/health.js?v=17"></script>
+  <script src="js/app.js?v=17"></script>
 </body>
 </html>

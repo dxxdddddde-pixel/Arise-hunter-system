@@ -174,7 +174,7 @@ data will not appear.
 - **"SETUP REQUIRED"** — `healthClientId` is empty or still a placeholder.
 - **`origin_mismatch` / `invalid_client`** — use a **Web application** client and register
   `https://dxxdddddde-pixel.github.io` under **Authorized JavaScript origins**. No repo path.
-- **`client_secret is missing`** — an old code-flow build is cached. Reload to pick up `v16`; this
+- **`client_secret is missing`** — an old code-flow build is cached. Reload to pick up `v17`; this
   version never calls the token endpoint and never uses a secret.
 - **403 / permission error** — enable the Google Health API, add the scopes to the consent screen,
   and add your account as a test user while the app is in testing.
@@ -194,7 +194,10 @@ data will not appear.
 
 **Data Link → Cloud Link** can sign you in with Google and automatically back up the complete ARISE
 state to Firebase. localStorage remains the offline source of truth; the cloud holds versioned
-snapshots you can restore on any device.
+snapshots you can restore on any device. While the app is open and signed in, a Firestore live
+listener merges changes from other devices section by section: Training Grounds, Body Log, Strength
+Log, claimed quests, settings and the health archive are combined instead of one device replacing
+everything. Deliberate manual `DOWNLOAD FROM CLOUD` still force-replaces local data.
 
 ### 1. Create the Firebase project
 
@@ -262,8 +265,11 @@ rule for each of those three paths.
 - **SYNC NOW**, **UPLOAD TO CLOUD** and **DOWNLOAD FROM CLOUD** are available for manual control.
 - Snapshots are split into Firestore document chunks and stored under `users/<uid>/snapshots/<revision>/`.
   The newest 10 revisions are kept.
-- If this device has unsynced edits and the cloud is newer, the System asks which version to keep —
-  it never overwrites silently.
+- Independent edits from different devices merge automatically. If the same record is edited on both
+  devices, the newest record timestamp wins. Deletes propagate through tombstones, and health archive
+  replacement is controlled by the newest Google Health sync time.
+- The old last-write-wins conflict prompt is gone. Manual `DOWNLOAD FROM CLOUD` remains the explicit
+  force-replace action whenever you deliberately want this device to match Firestore exactly.
 
 The Firebase SDK is cached by the service worker, so the dashboard still opens offline. Cloud
 syncing simply waits until the network returns.
@@ -391,9 +397,10 @@ The **Body Log** view keeps long-term physical records separate from the daily T
   steps over the 14 days ending on the checkpoint date. The modal shows how many daily records fed the
   calculation; no step field is typed by hand.
 - **Checkpoint reminders** — once a checkpoint is due, an in-app popup appears immediately and repeats
-  every **2 hours** until you log the entry. A toast and, if you enable **ENABLE ALERTS**, a system
-  notification accompany each popup. Reminders can be paused/resumed, and **TEST ALERT** previews the
-  popup. Reminders run while the app is open.
+  every **2 hours** until you log the entry. A toast always appears; system notifications are controlled
+  by the **NOTIFICATIONS ON/OFF** toggle in **Data Link → Test Window** and mirrored in Body Log.
+  Reminders can be paused/resumed there, and **TEST ALERT** in Test Window previews the popup.
+  Reminders run while the app is open.
 - **Body trend** — weight and waist are plotted together over your checkpoints, with change since the
   first record and the average step count across all checkpoints shown in the caption.
 - **Strength Log** — the **heaviest set of the month** for every exercise is calculated automatically
@@ -460,7 +467,7 @@ respects `prefers-reduced-motion` for particles and animations.
 | --- | --- |
 | OAuth never returns from `file://` | Use GitHub Pages or `http://localhost:8080` |
 | `origin_mismatch` / `invalid_client` | Register the site origin as an Authorized JavaScript origin |
-| `client_secret is missing` | Reload for `v16`; the old code-flow build is cached |
+| `client_secret is missing` | Reload for `v17`; the old code-flow build is cached |
 | "SETUP REQUIRED" | Add `healthClientId` (or `googleClientId`) in `firebase-config.js` |
 | 403 / permission error | Enable the Google Health API, add the read scopes, and add the account as a test user |
 | `ACCOUNT_NOT_LINKED` | Link the Google account inside the Google Health / Fitbit app first |
@@ -488,8 +495,9 @@ firebase-config.js  Firebase config and public Google OAuth client IDs
 js/data.js          storage, scoring, XP/levels, quests, demo generator
 js/ui.js            renderers and view components
 js/training.js      weekly plan builder, set ledger, 1RM, overload, charts, PRs
-js/body.js          biometric checkpoints, calculated steps, monthly strength peaks
-js/cloud.js         Google sign-in, automatic Firebase snapshot sync, restore
+js/body.js          biometric checkpoints, calculated steps, monthly strength peaks, notification toggle
+js/merge.js         section-level cloud merge, tombstones and deterministic signatures
+js/cloud.js         Google sign-in, live Firestore listener, automatic snapshot sync, restore
 js/health.js        Google Health GIS token flow, 15-minute auto-sync + REST mapping into the live snapshot pipeline
 js/app.js           boot, event wiring, backup export/restore, Google Health sync
 assets/fonts/       self-hosted fonts

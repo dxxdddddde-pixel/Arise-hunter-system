@@ -11,6 +11,16 @@
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
   const esc = (v) => UI.escape(v == null ? "" : String(v));
   const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+  const stamp = (state, record) => {
+    record.updatedAt = Date.now();
+    if (state && state.sync && state.sync.deviceId) record.updatedBy = state.sync.deviceId;
+    return record;
+  };
+  const tombstone = (state, bucket, id) => {
+    if (!state.deleted || typeof state.deleted !== "object") state.deleted = {};
+    if (!state.deleted[bucket] || typeof state.deleted[bucket] !== "object") state.deleted[bucket] = {};
+    state.deleted[bucket][String(id)] = Date.now();
+  };
   const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
   const num = (v) => {
     const n = parseFloat(String(v == null ? "" : v));
@@ -269,7 +279,9 @@
             weight: Math.max(0, num(ex.weight)),
             rest: clamp(Math.round(num(ex.rest) || 60), 15, 600),
             superset: normalizeSuper(ex.superset),
-            superRest: clamp(Math.round(num(ex.superRest) || 90), 0, 600)
+            superRest: clamp(Math.round(num(ex.superRest) || 90), 0, 600),
+            updatedAt: Number(ex.updatedAt) || 0,
+            updatedBy: String(ex.updatedBy || "")
           };
         });
       });
@@ -287,7 +299,9 @@
       plannedReps: l.plannedReps === undefined ? undefined : clamp(Math.round(num(l.plannedReps)), 1, 600),
       plannedSets: l.plannedSets === undefined ? undefined : clamp(Math.round(num(l.plannedSets)), 1, 20),
       at: l.at || new Date().toISOString(),
-      source: l.source || "manual"
+      source: l.source || "manual",
+      updatedAt: Number(l.updatedAt) || Date.parse(l.at) || 0,
+      updatedBy: String(l.updatedBy || "")
     }));
     t.activeWeek = clamp(Math.round(num(t.activeWeek)), 0, t.weeks.length - 1);
     t.selectedDay = clamp(Math.round(num(t.selectedDay)), 0, 6);
@@ -1251,11 +1265,11 @@
             const list = t.weeks[t.activeWeek].days[t.selectedDay];
             if (editing) {
               const found = list.find((item) => item.id === exercise.id);
-              if (found) Object.assign(found, values, { id: found.id });
+              if (found) Object.assign(found, values, stamp(state, { id: found.id }));
             } else {
-              list.push(Object.assign({ id: uid() }, values));
+              list.push(stamp(state, Object.assign({ id: uid() }, values)));
             }
-            ctx.commit();
+            ctx.commit("training");
             UI.toast("success", editing ? "PROTOCOL UPDATED" : "EXERCISE PROGRAMMED", values.name.toUpperCase() + " · " + values.sets + "×" + values.reps + (timed ? "S" : "") + " (" + values.repMin + "–" + repMax + ") @ " + values.weight + " KG" + (values.superset ? " · SS " + values.superset : ""));
             UI.addLog(state, "good", (editing ? "Protocol updated: " : "Exercise programmed: ") + values.name + " (" + values.sets + "×" + metricValue(values.reps, timed) + ").");
             ctx.sfx();
@@ -1319,14 +1333,14 @@
               plannedSets: planned ? planned.sets : sets
             };
             for (let i = 0; i < sets; i++) {
-              tr.logs.push(Object.assign({
+              tr.logs.push(stamp(s, Object.assign({
                 id: uid(), date, name: name.slice(0, 48), weight, reps, timed,
                 at: new Date().toISOString(), source: "manual"
-              }, snapshot));
+              }, snapshot)));
             }
             const progressed = autoProgress(s, name, date, p.exId);
             syncStrengthLog();
-            ctx.commit();
+            ctx.commit("training");
             const detail = timed ? reps + " SEC HOLD" + (weight > 0 ? " @ " + weight + " KG" : "") : weight + " KG × " + reps;
             if (progressed) {
               const pTitle = progressed.type === "weight" ? "WEIGHT INCREASE · "
@@ -1382,18 +1396,19 @@
           const weight = round1(ex.weight + (ex.weight > 0 ? wrapped * incrementFor(ex.name) : 0));
           const reps = Math.min(ex.repMax, ex.repMin + ((weekStep % range) * inc));
           for (let set = 0; set < Math.min(ex.sets, 5); set++) {
-            logs.push({ id: uid(), date, name: ex.name, weight, reps, timed,
+            logs.push(stamp(state, { id: uid(), date, name: ex.name, weight, reps, timed,
               exId: ex.id, plannedWeight: weight, plannedReps: reps, plannedSets: ex.sets,
-              at: new Date().toISOString(), source: "sample" });
+              at: new Date().toISOString(), source: "sample" }));
           }
           if (used.indexOf(ex.name) === -1) used.push(ex.name);
         });
       });
     }
+    t.logs.forEach((log) => tombstone(state, "trainingLogs", log.id));
     t.logs = logs;
     t.progressExercise = used[used.length - 1] || "";
     syncStrengthLog();
-    ctx.commit();
+    ctx.commit("training");
     UI.toast("success", "SAMPLE DATA INSTALLED", logs.length + " sets across 8 weeks of progressive overload.");
     UI.addLog(state, "good", "Sample training ledger loaded — 8 weeks of set history.");
     ctx.sfx();
@@ -1409,14 +1424,14 @@
 
     switch (action) {
       case "prev-week":
-        if (t.activeWeek > 0) { t.activeWeek--; ctx.commit(); }
+        if (t.activeWeek > 0) { t.activeWeek--; ctx.commit("training"); }
         break;
       case "next-week":
-        if (t.activeWeek < t.weeks.length - 1) { t.activeWeek++; ctx.commit(); }
+        if (t.activeWeek < t.weeks.length - 1) { t.activeWeek++; ctx.commit("training"); }
         break;
       case "day":
         t.selectedDay = clamp(num(data.day), 0, 6);
-        ctx.commit();
+        ctx.commit("training");
         break;
       case "add-ex":
         openExerciseModal(null);
@@ -1432,7 +1447,7 @@
         if (index === -1) return;
         const name = list[index].name;
         list.splice(index, 1);
-        ctx.commit();
+        ctx.commit("training");
         UI.toast("warn", "EXERCISE REMOVED", name.toUpperCase() + " deleted from this day.");
         UI.addLog(state, "warn", "Exercise removed from protocol: " + name + ".");
         break;
@@ -1465,20 +1480,20 @@
         }
         if (source === -1) { UI.toast("warn", "NO SESSION TO BORROW", "Program at least one training day in this week first."); return; }
         days[today] = days[source].map((ex) => Object.assign({}, ex, { id: uid() }));
-        ctx.commit();
+        ctx.commit("training");
         UI.toast("success", "SESSION BORROWED", DAY_NAMES[source] + "'s drills copied to " + DAY_NAMES[today] + ".");
         UI.addLog(state, "good", "Borrowed " + DAY_NAMES[source] + " protocol for " + DAY_NAMES[today] + ".");
         break;
       }
       case "today-open-plan":
         t.selectedDay = todayIndex();
-        ctx.commit();
+        ctx.commit("training");
         const plan = $(".plan-panel");
         if (plan) plan.scrollIntoView({ behavior: "smooth", block: "start" });
         break;
       case "progress":
         t.progressExercise = data.name || "";
-        ctx.commit();
+        ctx.commit("training");
         break;
       case "rename-week":
         UI.openModal({
@@ -1492,7 +1507,7 @@
                 const value = (overlay.querySelector("#weekName").value || "").trim();
                 if (!value) { UI.toast("warn", "INVALID NAME", "The week needs a designation."); return true; }
                 week.name = value.slice(0, 40);
-                ctx.commit();
+                ctx.commit("training");
                 UI.toast("success", "WEEK RENAMED", week.name.toUpperCase());
               }
             }
@@ -1505,7 +1520,7 @@
         week.days.forEach((list, i) => { copy.days[i] = list.map((ex) => Object.assign({}, ex, { id: uid() })); });
         t.weeks.push(copy);
         t.activeWeek = t.weeks.length - 1;
-        ctx.commit();
+        ctx.commit("training");
         UI.toast("success", "WEEK PROGRAMMED", "A new training week was cloned from the current block.");
         UI.addLog(state, "good", "New training week added to the protocol.");
         break;
@@ -1517,7 +1532,7 @@
           const tr = ensure(s);
           tr.weeks.splice(tr.activeWeek, 1);
           tr.activeWeek = clamp(tr.activeWeek, 0, tr.weeks.length - 1);
-          ctx.commit();
+          ctx.commit("training");
           UI.toast("warn", "WEEK DELETED", "The protocol has been shortened.");
           UI.addLog(s, "warn", "Training week deleted from protocol.");
         });
@@ -1532,7 +1547,7 @@
           return;
         }
         week.days[day] = source.map((ex) => Object.assign({}, ex, { id: uid() }));
-        ctx.commit();
+        ctx.commit("training");
         UI.toast("success", "DAY COPIED", DAY_NAMES[day] + " now mirrors the previous protocol.");
         break;
       }
@@ -1540,7 +1555,7 @@
         confirmModal("Clear Training Day?", "All exercises programmed for " + DAY_NAMES[t.selectedDay] + " will be removed. Logged sets are kept.", "CLEAR DAY", () => {
           const s = ctx.getState();
           ensure(s).weeks[ensure(s).activeWeek].days[ensure(s).selectedDay] = [];
-          ctx.commit();
+          ctx.commit("training");
           UI.toast("warn", "DAY CLEARED", DAY_NAMES[t.selectedDay] + " is now a rest day.");
           UI.addLog(s, "warn", "Training day cleared: " + DAY_NAMES[ensure(s).selectedDay] + ".");
         });
@@ -1549,8 +1564,9 @@
         const index = t.logs.findIndex((l) => l.id === data.id);
         if (index === -1) return;
         const removed = t.logs.splice(index, 1)[0];
+        tombstone(t, "trainingLogs", removed.id);
         syncStrengthLog();
-        ctx.commit();
+        ctx.commit("training");
         UI.toast("warn", "SET REMOVED", removed.name + " · " + (isTimed(removed)
           ? removed.reps + " SEC HOLD" : removed.weight + " KG × " + removed.reps));
         break;
@@ -1559,9 +1575,11 @@
         if (!t.logs.length) { UI.toast("warn", "LEDGER EMPTY", "There are no sets to clear."); return; }
         confirmModal("Purge Set Ledger?", "This deletes all " + t.logs.length + " logged sets. Personal records, 1RM and volume will reset. Your weekly plan is kept.", "PURGE LEDGER", () => {
           const s = ctx.getState();
-          ensure(s).logs = [];
+          const tr = ensure(s);
+          tr.logs.forEach((log) => tombstone(tr, "trainingLogs", log.id));
+          tr.logs = [];
           syncStrengthLog();
-          ctx.commit();
+          ctx.commit("training");
           UI.toast("warn", "LEDGER PURGED", "Training analytics have been reset.");
           UI.addLog(s, "warn", "Training set ledger purged by operator.");
         });

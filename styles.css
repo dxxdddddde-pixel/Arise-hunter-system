@@ -1150,10 +1150,10 @@ a { color: var(--cyan); }
 .cloud-google-button[hidden] { display: none; }
 .cloud-google-button > div { max-width: 100%; }
 #cloudUser, #cloudPending { font-size: 0.62rem; overflow-wrap: anywhere; }
-.install-panel { border-color: rgba(53, 214, 255, 0.24); background: rgba(6, 18, 30, 0.34); }
-.install-panel .method { padding: 9px 0; }
-.install-panel .method strong { font-weight: 600; color: var(--text); }
-.install-panel code { font-family: var(--font-mono); font-size: 0.7rem; color: var(--cyan); word-break: break-all; }
+.test-panel { border-color: rgba(53, 214, 255, 0.24); background: rgba(6, 18, 30, 0.34); }
+.test-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.test-actions .btn { flex: 1 1 120px; }
+.test-actions .btn[aria-pressed="true"] { border-color: rgba(84, 255, 193, 0.4); color: var(--green); }
 .note-panel { border-color: rgba(255, 212, 121, 0.14); background: rgba(20, 18, 12, 0.28); }
 .note-panel p:last-child { font-size: 0.75rem; color: var(--muted); line-height: 1.5; }
 
@@ -1918,8 +1918,7 @@ a { color: var(--cyan); }
   .gate-row { grid-template-columns: 34px minmax(0, 1fr) 50px; }
   .gate-row .gate-stat.gate-time { display: none; }
   .method { grid-template-columns: 26px 1fr; gap: 8px; }
-  .archive-panel .link-actions { flex-direction: column; width: 100%; }
-  .archive-panel .link-actions .btn { width: 100%; }
+  .test-actions .btn { flex-basis: 100%; }
   .link-detail { font-size: 0.52rem; }
   .day-tab { font-size: 0.5rem; padding: 7px 1px; }
   .day-tab small { font-size: 0.4rem; }

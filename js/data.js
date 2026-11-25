@@ -185,6 +185,7 @@
       version: 1,
       hunter: { name: "SUNG JIN-WOO" },
       sound: true,
+      notifications: true,
       bonusXp: 0,
       days: {},
       workouts: [],
@@ -214,6 +215,15 @@
         dirty: false,
         syncing: false,
         lastError: null
+      },
+      deleted: {
+        trainingLogs: {},
+        bodyEntries: {},
+        strengthEntries: {}
+      },
+      sync: {
+        deviceId: "",
+        sections: {}
       }
     };
   }
@@ -226,6 +236,7 @@
       ...s,
       hunter: { ...base.hunter, ...(s.hunter || {}) },
       goals: { ...base.goals, ...(s.goals || {}) },
+      notifications: s.notifications !== false,
       training: s.training && typeof s.training === "object" ? s.training : null,
       body: s.body && typeof s.body === "object" ? s.body : base.body,
       strength: s.strength && typeof s.strength === "object" ? s.strength : base.strength,
@@ -242,7 +253,18 @@
       days: s.days && typeof s.days === "object" ? s.days : {},
       workouts: Array.isArray(s.workouts) ? s.workouts : [],
       imports: Array.isArray(s.imports) ? s.imports : [],
-      claimed: s.claimed && typeof s.claimed === "object" ? s.claimed : {}
+      claimed: s.claimed && typeof s.claimed === "object" ? s.claimed : {},
+      deleted: {
+        trainingLogs: s.deleted && s.deleted.trainingLogs && typeof s.deleted.trainingLogs === "object" ? s.deleted.trainingLogs : {},
+        bodyEntries: s.deleted && s.deleted.bodyEntries && typeof s.deleted.bodyEntries === "object" ? s.deleted.bodyEntries : {},
+        strengthEntries: s.deleted && s.deleted.strengthEntries && typeof s.deleted.strengthEntries === "object" ? s.deleted.strengthEntries : {}
+      },
+      sync: {
+        deviceId: s.sync && typeof s.sync.deviceId === "string" && s.sync.deviceId
+          ? s.sync.deviceId
+          : "dev-" + uid(),
+        sections: s.sync && s.sync.sections && typeof s.sync.sections === "object" ? s.sync.sections : {}
+      }
     };
   }
 
@@ -549,6 +571,17 @@
     const daily = quest.type === "daily";
     const period = daily ? todayKey() : weekStartKey(todayKey());
     return period + "|" + quest.type + "|" + quest.id;
+  }
+
+  const QUEST_XP = {
+    daily: { steps: 60, exercise: 60, gate: 80, sleep: 60, recovery: 70 },
+    weekly: { gates5: 160, steps50: 180, recovery5: 200, move300: 180 }
+  };
+
+  function questXp(key) {
+    const parts = String(key || "").split("|");
+    const table = QUEST_XP[parts[1]];
+    return table && table[parts[2]] ? table[parts[2]] : 0;
   }
 
   function weekStartKey(key) {
@@ -1116,6 +1149,7 @@
     applyImport,
     generateDemo,
     questKey,
+    questXp,
     weekStartKey,
     todayKey,
     keyAdd,

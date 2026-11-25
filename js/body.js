@@ -11,6 +11,11 @@
   const $ = (sel, root) => (root || document).querySelector(sel);
   const esc = (v) => UI.escape(v == null ? "" : String(v));
   const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+  const stamp = (state, record) => {
+    record.updatedAt = Date.now();
+    if (state && state.sync && state.sync.deviceId) record.updatedBy = state.sync.deviceId;
+    return record;
+  };
   const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
   const num = (v) => {
     const n = parseFloat(String(v == null ? "" : v));
@@ -77,7 +82,9 @@
         waist: Math.max(0, round1(e.waist)),
         avgSteps: Math.max(0, Math.round(num(e.avgSteps))),
         days: clamp(Math.round(num(e.days)), 0, PERIOD_DAYS),
-        at: e.at || new Date().toISOString()
+        at: e.at || new Date().toISOString(),
+        updatedAt: Number(e.updatedAt) || Date.parse(e.at) || 0,
+        updatedBy: String(e.updatedBy || "")
       }))
       .filter((e) => e.weight > 0 || e.waist > 0)
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -105,7 +112,8 @@
           date: validDate(e.date) ? String(e.date) : String(e.month) + "-01",
           at: e.at || new Date().toISOString(),
           source: e.source === "ledger" ? "ledger" : "manual",
-          updatedAt: e.updatedAt || e.at || new Date().toISOString()
+          updatedAt: Number(e.updatedAt) || Date.parse(e.at) || 0,
+          updatedBy: String(e.updatedBy || "")
         };
         const key = record.month + "|" + record.name.toLowerCase();
         const previous = strengthMap.get(key);
@@ -219,8 +227,8 @@
         .every((field) => existing[field] === values[field]);
       if (unchanged) return;
       const at = new Date().toISOString();
-      if (existing) Object.assign(existing, values, { at: existing.at || at, updatedAt: at });
-      else t.strength.entries.push(Object.assign({ id: uid(), at }, values, { updatedAt: at }));
+      if (existing) Object.assign(existing, values, stamp(state, { id: existing.id, at: existing.at || at }));
+      else t.strength.entries.push(stamp(state, Object.assign({ id: uid(), at }, values)));
       changed = true;
     });
 
@@ -377,11 +385,13 @@
     }
     const toggle = $("#bodyReminderToggle");
     if (toggle) toggle.textContent = reminder.enabled ? "PAUSE" : "RESUME";
-    const notify = $("#bodyNotifyBtn");
-    if (notify) {
-      const supported = typeof Notification !== "undefined";
-      notify.hidden = !supported || Notification.permission === "granted";
-    }
+    const enabled = t.notifications !== false;
+    [$("#bodyNotifyBtn"), $("#linkNotifyBtn")].forEach((btn) => {
+      if (!btn) return;
+      btn.hidden = false;
+      btn.textContent = enabled ? "NOTIFICATIONS ON" : "NOTIFICATIONS OFF";
+      btn.setAttribute("aria-pressed", enabled ? "true" : "false");
+    });
   }
 
   function renderBodyChart(t) {
@@ -558,7 +568,7 @@
               return true;
             }
             const calculated = stepsAverage(s, date);
-            const record = {
+            const record = stamp(s, {
               id: editing ? entry.id : uid(),
               date,
               weight,
@@ -566,7 +576,7 @@
               avgSteps: calculated.avg,
               days: calculated.days,
               at: editing ? entry.at : new Date().toISOString()
-            };
+            });
             if (editing) {
               const found = t2.body.entries.find((e) => e.id === entry.id);
               if (found) Object.assign(found, record);
@@ -575,7 +585,7 @@
               t2.body.entries.sort((a, b) => a.date.localeCompare(b.date));
             }
             scheduleReminder(t2);
-            ctx.commit();
+            ctx.commit("body");
             UI.toast("success", editing ? "CHECKPOINT UPDATED" : "CHECKPOINT LOGGED",
               D.fmtFull(date) + " · " + weight + " KG · " + waist + " CM · " + fmt(calculated.avg) + " STEPS");
             UI.addLog(s, "good", "Body checkpoint " + (editing ? "updated" : "logged") + ": " + D.fmtShort(date) + " · " + weight + " KG · " + waist + " CM.");
@@ -653,7 +663,7 @@
             const weight = Math.max(0, round1(overlay.querySelector("#strWeight").value));
             const reps = clamp(Math.round(num(overlay.querySelector("#strReps").value)), 1, isTimed ? 600 : 100);
             const at = new Date().toISOString();
-            const record = {
+            const record = stamp(s, {
               id: uid(),
               name,
               month,
@@ -662,9 +672,8 @@
               timed: isTimed,
               date: validDate(date) ? date : month + "-01",
               at,
-              updatedAt: at,
               source: "manual"
-            };
+            });
             const existing = t2.strength.entries.find((e) =>
               e.name.toLowerCase() === name.toLowerCase() && e.month === month);
             if (existing) Object.assign(existing, record, { id: existing.id, at: existing.at || at });
@@ -672,7 +681,7 @@
             t2.strength.entries.sort((a, b) => b.month.localeCompare(a.month) || a.name.localeCompare(b.name));
             t2.strength.viewMonth = month;
             t2.strength.progressExercise = name;
-            ctx.commit();
+            ctx.commit("strength");
             UI.toast("success", existing ? "MANUAL PEAK UPDATED" : "MANUAL PEAK ADDED",
               monthLabel(month) + " · " + name + " · " + (isTimed ? reps + " SEC" : round1(weight) + " KG × " + reps));
             UI.addLog(s, "good", "Strength peak " + (existing ? "updated" : "added") + ": " + name + " · " + monthLabel(month) + ".");
@@ -745,7 +754,8 @@
       ? "Reminder system active. Real alerts start at the 14-day checkpoint."
       : "Weight + waist checkpoint due. Log it to stop the 2-hour alerts.";
     UI.toast(test ? "info" : "warn", title, message);
-    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+    const s = ctx ? ctx.getState() : null;
+    if (s && s.notifications !== false && typeof Notification !== "undefined" && Notification.permission === "granted") {
       try { new Notification(title, { body: message, tag: "arise-body-log", renotify: true }); } catch (err) { /* alerts are optional */ }
     }
   }
@@ -766,7 +776,8 @@
     if (due) {
       reminder.lastPromptAt = new Date(now).toISOString();
       reminder.nextAt = now + TWO_HOURS;
-      ctx.commit();
+      ctx.persist("reminder");
+      ctx.render();
     }
   }
 
@@ -792,28 +803,50 @@
         break;
       case "strength-prev":
         t.strength.viewMonth = monthShift(t.strength.viewMonth, -1);
-        ctx.commit();
+        ctx.persist("view");
+        ctx.render();
         break;
       case "strength-next":
         t.strength.viewMonth = monthShift(t.strength.viewMonth, 1);
-        ctx.commit();
+        ctx.persist("view");
+        ctx.render();
         break;
       case "body-reminder-toggle": {
         t.body.reminder.enabled = !t.body.reminder.enabled;
         if (t.body.reminder.enabled && bodyIsDue(t)) t.body.reminder.nextAt = Date.now();
-        ctx.commit();
+        ctx.commit("body");
         UI.toast("success", t.body.reminder.enabled ? "REMINDERS RESUMED" : "REMINDERS PAUSED",
           t.body.reminder.enabled ? "Alerts will repeat every 2 hours until the checkpoint is logged." : "Log your checkpoint manually whenever you are ready.");
         break;
       }
-      case "body-notify-enable": {
-        if (typeof Notification === "undefined") {
-          UI.toast("warn", "ALERTS UNSUPPORTED", "This browser does not support system notifications. In-app popups remain active.");
+      case "body-notify-toggle": {
+        const s2 = ctx.getState();
+        const current = ensure(s2);
+        if (current.notifications !== false) {
+          current.notifications = false;
+          ctx.commit("settings");
+          UI.toast("warn", "NOTIFICATIONS OFF", "System alerts are muted. In-app popups remain active.");
           break;
         }
-        const finish = (permission) => UI.toast(permission === "granted" ? "success" : "warn",
-          permission === "granted" ? "ALERTS ENABLED" : "ALERTS BLOCKED",
-          permission === "granted" ? "System notifications will appear alongside the popups." : "In-app popups will still run every 2 hours.");
+        if (typeof Notification === "undefined") {
+          current.notifications = true;
+          ctx.commit("settings");
+          UI.toast("warn", "SYSTEM ALERTS UNSUPPORTED", "In-app popups remain active on this browser.");
+          break;
+        }
+        const finish = (permission) => {
+          const s3 = ctx.getState();
+          const updated = ensure(s3);
+          updated.notifications = permission === "granted";
+          ctx.commit("settings");
+          UI.toast(updated.notifications ? "success" : "warn",
+            updated.notifications ? "NOTIFICATIONS ON" : "NOTIFICATIONS BLOCKED",
+            updated.notifications ? "System notifications will appear alongside the popups." : "Allow notifications in browser settings to enable system alerts.");
+        };
+        if (Notification.permission === "granted") {
+          finish("granted");
+          break;
+        }
         const request = Notification.requestPermission();
         if (request && typeof request.then === "function") request.then(finish);
         else finish(request);
@@ -834,8 +867,11 @@
           const s = ctx.getState();
           const tr = ensure(s);
           tr.body.entries = tr.body.entries.filter((e) => e.id !== entry.id);
+          if (!tr.deleted || typeof tr.deleted !== "object") tr.deleted = {};
+          if (!tr.deleted.bodyEntries || typeof tr.deleted.bodyEntries !== "object") tr.deleted.bodyEntries = {};
+          tr.deleted.bodyEntries[entry.id] = Date.now();
           scheduleReminder(tr);
-          ctx.commit();
+          ctx.commit("body");
           UI.toast("warn", "CHECKPOINT REMOVED", D.fmtFull(entry.date) + " was deleted.");
           UI.addLog(s, "warn", "Body checkpoint removed: " + D.fmtShort(entry.date) + ".");
         });
@@ -850,7 +886,8 @@
     const map = {
       "#bodyLogBtn": "body-log",
       "#bodyReminderToggle": "body-reminder-toggle",
-      "#bodyNotifyBtn": "body-notify-enable",
+      "#bodyNotifyBtn": "body-notify-toggle",
+      "#linkNotifyBtn": "body-notify-toggle",
       "#bodyTestReminderBtn": "body-test-reminder",
       "#strengthLogBtn": "strength-log",
       "#strengthPrev": "strength-prev",
@@ -865,7 +902,8 @@
       select.addEventListener("change", () => {
         const t = ensure(ctx.getState());
         t.strength.progressExercise = select.value;
-        ctx.commit();
+        ctx.persist("view");
+        ctx.render();
       });
     }
   }

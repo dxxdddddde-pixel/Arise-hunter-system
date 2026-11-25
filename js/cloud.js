@@ -31,6 +31,10 @@
   let googleReady = false;
   let googleChecked = false;
   let googlePromptTimer = null;
+  const deviceId = "dev-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  let metaListener = null;
+  let listenerPrimed = false;
+  let merging = false;
 
   function ensure(state) {
     if (!state.cloud || typeof state.cloud !== "object") state.cloud = {};
@@ -237,9 +241,11 @@
       c.dirty = false;
       reconciled = false;
       clearTimeout(syncTimer);
+      stopMetaListener();
     }
     D.saveState(state);
     render();
+    if (user) startMetaListener();
     if (user && !reconciled) {
       reconciled = true;
       reconcile().catch((err) => handleCloudError("CLOUD LINK ERROR", err, false));
@@ -274,6 +280,22 @@
     if (!db || !user) return null;
     const snap = await metaRef().get();
     return snap.exists ? snap.data() : null;
+  }
+
+  async function setRemoteMeta(data, expectedAt) {
+    const payload = Object.assign({}, data, { originDeviceId: deviceId });
+    try {
+      if (typeof db.runTransaction !== "function") throw new Error("transactions unavailable");
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(metaRef());
+        const currentAt = Number(snap.exists && snap.data() && snap.data().updatedAt) || 0;
+        if (currentAt > Number(expectedAt || 0)) throw new Error("Cloud changed while syncing. Try again.");
+        tx.set(metaRef(), payload);
+      });
+    } catch (err) {
+      if (err && /Cloud changed while syncing/i.test(String(err.message || ""))) throw err;
+      await metaRef().set(payload);
+    }
   }
 
   function counts(state) {
@@ -408,7 +430,7 @@
     }
   }
 
-  async function uploadToCloud(manual, overwrite) {
+  async function uploadToCloud(manual, overwrite, options) {
     if (!user || !db) {
       if (manual) UI.toast("warn", "SIGN IN REQUIRED", "Sign in with Google before syncing to the cloud.");
       return;
@@ -425,25 +447,31 @@
     render();
 
     let pendingId = null;
+    let mergeMeta = null;
     try {
       const meta = await getRemoteMeta();
       const remoteAt = Number(meta && meta.updatedAt) || 0;
       const localAt = Number(c.lastSyncAt) || 0;
 
       if (meta && meta.revisionId && remoteAt > localAt && !overwrite) {
-        if (c.dirty) {
-          showConflict(meta);
-        } else {
-          await downloadFromCloud(false, meta);
-        }
+        // Release this upload slot before merging: the merge may upload the
+        // combined snapshot itself.
+        syncing = false;
+        c.syncing = false;
+        await mergeFromRemote(meta);
         return;
       }
 
       const snapshotState = JSON.parse(JSON.stringify(state));
       snapshotState.cloud = Object.assign({}, snapshotState.cloud, {
+        uid: null,
+        email: null,
+        lastSyncAt: null,
+        remoteUpdatedAt: null,
         dirty: false,
         syncing: false,
-        lastError: null
+        lastError: null,
+        deviceId: null
       });
       const text = JSON.stringify({
         app: "ARISE",
@@ -456,7 +484,9 @@
       const n = counts(state);
 
       pendingId = await createRevision(packed, state.version || 1);
-      await metaRef().set({
+      const mergeSignature = (options && options.mergeSignature) ||
+        (window.SystemMerge ? window.SystemMerge.signature(snapshotState) : "");
+      await setRemoteMeta({
         uid: user.uid,
         email: user.email || null,
         updatedAt: now,
@@ -469,9 +499,10 @@
         chunkCount: packed.chunkCount,
         days: n.days,
         sets: n.sets,
+        mergeSignature,
         app: "ARISE",
         schemaVersion: state.version || 1
-      });
+      }, remoteAt);
       pendingId = null;
 
       c.dirty = false;
@@ -481,8 +512,12 @@
       if (manual) UI.toast("success", "CLOUD SYNCED", n.days + " days and " + n.sets + " sets uploaded.");
       trimHistory().catch(() => { /* best effort */ });
     } catch (err) {
-      c.lastError = err && err.message ? err.message : "Upload failed.";
-      UI.toast("error", "CLOUD SYNC FAILED", c.lastError);
+      const message = err && err.message ? err.message : "Upload failed.";
+      if (/Cloud changed while syncing/i.test(message)) {
+        mergeMeta = await getRemoteMeta().catch(() => null);
+      }
+      c.lastError = mergeMeta ? null : message;
+      if (!mergeMeta) UI.toast("error", "CLOUD SYNC FAILED", message);
       if (pendingId) deleteRevision(pendingId).catch(() => null);
     } finally {
       syncing = false;
@@ -492,6 +527,30 @@
       D.saveState(current);
       render();
     }
+    if (mergeMeta) mergeFromRemote(mergeMeta);
+  }
+
+  async function readRemoteState(meta) {
+    const revisionSnap = await revisionRef(meta.revisionId).get();
+    const revision = revisionSnap.exists ? revisionSnap.data() : null;
+    const info = Object.assign({}, meta, revision || {});
+    const chunkCount = Number(info.chunkCount) || 0;
+    if (!chunkCount || chunkCount > BATCH_LIMIT) throw new Error("Cloud snapshot metadata is invalid.");
+    if (Number(info.bytes) > MAX_BYTES) throw new Error("Cloud snapshot is too large.");
+
+    const parts = [];
+    for (let i = 0; i < chunkCount; i++) {
+      const chunkSnap = await chunkRef(meta.revisionId, i).get();
+      const data = chunkSnap.exists ? chunkSnap.data() : null;
+      if (!data || typeof data.text !== "string") throw new Error("Cloud snapshot is incomplete.");
+      parts.push(data.text);
+    }
+
+    const bytes = fromBase64(parts.join(""));
+    const text = await unpack(bytes, info.encoding || meta.encoding, info.checksum || meta.checksum);
+    const payload = JSON.parse(text);
+    if (!payload || !payload.state || typeof payload.state !== "object") throw new Error("Cloud snapshot is invalid.");
+    return payload.state;
   }
 
   async function downloadFromCloud(force, knownMeta) {
@@ -505,27 +564,7 @@
         UI.toast("warn", "NO CLOUD ARCHIVE", "Nothing has been uploaded for this account yet.");
         return;
       }
-
-      const revisionSnap = await revisionRef(meta.revisionId).get();
-      const revision = revisionSnap.exists ? revisionSnap.data() : null;
-      const info = Object.assign({}, meta, revision || {});
-      const chunkCount = Number(info.chunkCount) || 0;
-      if (!chunkCount || chunkCount > BATCH_LIMIT) throw new Error("Cloud snapshot metadata is invalid.");
-      if (Number(info.bytes) > MAX_BYTES) throw new Error("Cloud snapshot is too large.");
-
-      const parts = [];
-      for (let i = 0; i < chunkCount; i++) {
-        const chunkSnap = await chunkRef(meta.revisionId, i).get();
-        const data = chunkSnap.exists ? chunkSnap.data() : null;
-        if (!data || typeof data.text !== "string") throw new Error("Cloud snapshot is incomplete.");
-        parts.push(data.text);
-      }
-
-      const bytes = fromBase64(parts.join(""));
-      const text = await unpack(bytes, info.encoding || meta.encoding, info.checksum || meta.checksum);
-      const payload = JSON.parse(text);
-      if (!payload || !payload.state || typeof payload.state !== "object") throw new Error("Cloud snapshot is invalid.");
-      applyRemote(payload.state, meta);
+      applyRemote(await readRemoteState(meta), meta);
     } catch (err) {
       const state = ctx.getState();
       const c = ensure(state);
@@ -554,6 +593,77 @@
     UI.toast("success", "CLOUD ARCHIVE RESTORED", "This device now matches your latest Firestore snapshot.");
   }
 
+  async function mergeFromRemote(meta) {
+    if (!user || !db || !window.SystemMerge || merging) return;
+    merging = true;
+    try {
+      const remoteState = await readRemoteState(meta);
+      const localState = ctx.getState();
+      const result = window.SystemMerge.merge(localState, remoteState);
+      const mergedSig = window.SystemMerge.signature(result.state);
+      const localSig = window.SystemMerge.signature(localState);
+      const remoteSig = String(meta.mergeSignature || "");
+      const syncedAt = Number(meta.updatedAt) || Date.now();
+
+      if (result.changed) {
+        const mergedCloud = ensure(result.state);
+        mergedCloud.uid = user ? user.uid : null;
+        mergedCloud.email = user.email || null;
+        mergedCloud.lastSyncAt = syncedAt;
+        mergedCloud.remoteUpdatedAt = syncedAt;
+        mergedCloud.dirty = false;
+        mergedCloud.syncing = false;
+        mergedCloud.lastError = null;
+        ctx.setState(result.state);
+        ctx.persist("cloud-merge");
+        UI.render(result.state);
+        UI.addLog(result.state, "good", "Cloud changes merged from another device.", "cloud-merge");
+      } else {
+        const c = ensure(localState);
+        c.lastSyncAt = syncedAt;
+        c.remoteUpdatedAt = syncedAt;
+        ctx.persist("cloud");
+        UI.render(localState);
+      }
+
+      if (remoteSig && mergedSig === remoteSig) return;
+      if (result.changed || !remoteSig || localSig !== mergedSig) {
+        await uploadToCloud(false, true, { mergeSignature: mergedSig });
+      }
+    } catch (err) {
+      handleCloudError("CLOUD MERGE FAILED", err, false);
+    } finally {
+      merging = false;
+      render();
+    }
+  }
+
+  function startMetaListener() {
+    if (!db || !user || metaListener) return;
+    listenerPrimed = false;
+    metaListener = metaRef().onSnapshot((snap) => {
+      if (!snap.exists) return;
+      const meta = snap.data();
+      if (!listenerPrimed) {
+        listenerPrimed = true;
+        return;
+      }
+      if (meta && meta.originDeviceId === deviceId) return;
+      const remoteAt = Number(meta && meta.updatedAt) || 0;
+      const localAt = Number(ctx.getState().cloud && ctx.getState().cloud.lastSyncAt) || 0;
+      if (remoteAt <= localAt) return;
+      mergeFromRemote(meta);
+    }, (err) => console.warn("ARISE: Cloud Link live listener unavailable", err));
+  }
+
+  function stopMetaListener() {
+    if (metaListener) {
+      try { metaListener(); } catch (err) { /* ignore */ }
+      metaListener = null;
+    }
+    listenerPrimed = false;
+  }
+
   async function reconcile() {
     if (!user || !db) return;
     const state = ctx.getState();
@@ -577,12 +687,8 @@
     c.remoteUpdatedAt = remoteAt;
 
     if (remoteAt > localAt) {
-      if (localDirty) {
-        showConflict(meta);
-      } else {
-        await downloadFromCloud(false, meta);
-        return;
-      }
+      await mergeFromRemote(meta);
+      return;
     } else if (localDirty) {
       await uploadToCloud(false);
       return;
@@ -591,25 +697,6 @@
     }
     D.saveState(state);
     render();
-  }
-
-  function showConflict(meta) {
-    const local = counts(ctx.getState());
-    UI.openModal({
-      title: "Cloud Data Conflict",
-      body: `<p>This device has <strong>${local.days} days</strong> of unsynced changes. The cloud snapshot is newer
-             (${D.fmtDateTime(new Date(Number(meta.updatedAt) || Date.now()).toISOString())}).</p>
-             <p>Choose which version to keep. Nothing is overwritten until you decide.</p>`,
-      actions: [
-        { label: "CANCEL" },
-        { label: "UPLOAD DEVICE", onClick: () => uploadToCloud(true, true) },
-        {
-          label: "USE CLOUD DATA",
-          kind: "primary",
-          onClick: () => downloadFromCloud(true, meta)
-        }
-      ]
-    });
   }
 
   function scheduleSync() {
@@ -900,7 +987,9 @@
     bindStatic();
     render();
     window.addEventListener("arise:state-changed", (e) => {
-      if (!e.detail || e.detail.source !== "cloud") markDirty();
+      const source = e.detail && e.detail.source ? String(e.detail.source) : "local";
+      const silent = ["cloud", "cloud-merge", "reminder", "view"];
+      if (silent.indexOf(source) === -1) markDirty();
     });
     window.addEventListener("online", () => {
       if (user && ctx.getState().cloud.dirty) syncNow(false);

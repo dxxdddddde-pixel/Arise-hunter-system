@@ -183,13 +183,16 @@
   /* ---------------------------------------------------------
      persistence + level up
      --------------------------------------------------------- */
-  function persist(source) {
+  function persist(source, section) {
+    if (section && state.sync && typeof state.sync === "object") {
+      state.sync.sections[section] = Date.now();
+    }
     const ok = D.saveState(state);
     if (!ok) {
       UI.toast("error", "SAVE FAILED", "Browser storage is full. Export a backup and purge older data.");
     } else {
       window.dispatchEvent(new CustomEvent("arise:state-changed", {
-        detail: { source: source || "local", at: Date.now() }
+        detail: { source: source || "local", section: section || "", at: Date.now() }
       }));
     }
     return ok;
@@ -267,7 +270,7 @@
     const silent = opts.silent === true;
     const before = D.levelInfo(D.totalXp(state)).level;
     state = D.applyImport(state, result);
-    persist(silent ? "health-auto-sync" : undefined);
+    persist(silent ? "health-auto-sync" : "health-sync", "health");
     UI.render(state);
     if (!silent) UI.setView("status");
     const summary = summarize(result);
@@ -334,7 +337,7 @@
     const before = D.levelInfo(D.totalXp(state)).level;
     state.claimed[D.questKey(quest)] = true;
     state.bonusXp = (state.bonusXp || 0) + quest.xp;
-    persist();
+    persist("local", "claimed");
     UI.render(state);
     UI.toast("success", "QUEST CLAIMED", "+" + quest.xp + " XP · " + quest.title);
     UI.addLog(state, "good", "Directive claimed: " + quest.title + " (+" + quest.xp + " XP).");
@@ -363,7 +366,7 @@
               return true;
             }
             state.hunter.name = value.slice(0, 22);
-            persist();
+            persist("local", "settings");
             UI.render(state);
             UI.toast("success", "IDENTITY UPDATED", "The System will now address you as " + state.hunter.name + ".");
             UI.addLog(state, "good", "Hunter identifier updated to " + state.hunter.name + ".");
@@ -481,7 +484,7 @@
             kind: "danger",
             onClick: () => {
               state = restored;
-              persist();
+              persist("local", "health");
               UI.render(state);
               UI.setView("status");
               UI.toast("success", "ARCHIVE RESTORED", dayCount + " days recovered from the backup.");
@@ -585,7 +588,7 @@
 
     $("#soundToggle").addEventListener("click", () => {
       state.sound = !state.sound;
-      persist();
+      persist("local", "settings");
       updateSoundButton();
       if (state.sound) sfx.confirm();
       UI.toast(state.sound ? "success" : "warn", "AUDIO " + (state.sound ? "ENABLED" : "MUTED"), state.sound ? "System feedback online." : "System feedback silenced.");
@@ -660,8 +663,8 @@
     const moduleContext = {
       getState: () => state,
       setState: (next) => { state = next; },
-      commit: () => { persist(); UI.render(state); },
-      persist: (source) => persist(source),
+      commit: (section) => { persist("local", section); UI.render(state); },
+      persist: (source, section) => persist(source, section),
       render: () => UI.render(state),
       applySnapshot: applyLiveSnapshot,
       sfx: () => sfx.confirm()
