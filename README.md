@@ -174,7 +174,7 @@ data will not appear.
 - **"SETUP REQUIRED"** — `healthClientId` is empty or still a placeholder.
 - **`origin_mismatch` / `invalid_client`** — use a **Web application** client and register
   `https://dxxdddddde-pixel.github.io` under **Authorized JavaScript origins**. No repo path.
-- **`client_secret is missing`** — an old code-flow build is cached. Reload to pick up `v15`; this
+- **`client_secret is missing`** — an old code-flow build is cached. Reload to pick up `v16`; this
   version never calls the token endpoint and never uses a secret.
 - **403 / permission error** — enable the Google Health API, add the scopes to the consent screen,
   and add your account as a test user while the app is in testing.
@@ -460,7 +460,7 @@ respects `prefers-reduced-motion` for particles and animations.
 | --- | --- |
 | OAuth never returns from `file://` | Use GitHub Pages or `http://localhost:8080` |
 | `origin_mismatch` / `invalid_client` | Register the site origin as an Authorized JavaScript origin |
-| `client_secret is missing` | Reload for `v15`; the old code-flow build is cached |
+| `client_secret is missing` | Reload for `v16`; the old code-flow build is cached |
 | "SETUP REQUIRED" | Add `healthClientId` (or `googleClientId`) in `firebase-config.js` |
 | 403 / permission error | Enable the Google Health API, add the read scopes, and add the account as a test user |
 | `ACCOUNT_NOT_LINKED` | Link the Google account inside the Google Health / Fitbit app first |

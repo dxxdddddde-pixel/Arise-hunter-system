@@ -15,7 +15,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="assets/fonts.css" />
-  <link rel="stylesheet" href="styles.css?v=15" />
+  <link rel="stylesheet" href="styles.css?v=16" />
 </head>
 <body data-rank="E">
   <canvas id="fx" aria-hidden="true"></canvas>
@@ -206,19 +206,19 @@
             </div>
           </div>
 
-          <div class="score-grid">
+          <div class="score-grid score-bevel" role="group" aria-label="Hunter readiness scores">
             <article class="score-card" data-tone="vitality" id="cardRecovery">
               <div class="score-top">
                 <span class="eyebrow">RECOVERY</span>
                 <span class="score-tag" id="recoveryTag">NO DATA</span>
               </div>
               <div class="score-main">
-                <div class="ring">
-                  <svg viewBox="0 0 120 120" aria-hidden="true">
-                    <circle class="ring-track" cx="60" cy="60" r="52"/>
-                    <circle class="ring-value" id="recoveryRing" cx="60" cy="60" r="52"/>
-                  </svg>
-                  <div class="ring-label"><strong id="recoveryVal">--</strong><span>/ 100</span></div>
+                <div class="bevel-gauge" id="recoveryBevel" role="img" aria-label="Recovery: no data">
+                  <i class="bevel-fill" aria-hidden="true"></i>
+                  <div class="bevel-value">
+                    <strong id="recoveryVal">--</strong><span>%</span>
+                    <em id="recoveryRaw">RAW -- / 100</em>
+                  </div>
                 </div>
                 <p class="score-desc" id="recoveryDesc">Sync Google Health data to calculate recovery from resting heart rate, body temperature and sleep.</p>
               </div>
@@ -231,12 +231,12 @@
                 <span class="score-tag" id="strainTag">NO DATA</span>
               </div>
               <div class="score-main">
-                <div class="ring">
-                  <svg viewBox="0 0 120 120" aria-hidden="true">
-                    <circle class="ring-track" cx="60" cy="60" r="52"/>
-                    <circle class="ring-value" id="strainRing" cx="60" cy="60" r="52"/>
-                  </svg>
-                  <div class="ring-label"><strong id="strainVal">--</strong><span>/ 21</span></div>
+                <div class="bevel-gauge" id="strainBevel" role="img" aria-label="Strain: no data">
+                  <i class="bevel-fill" aria-hidden="true"></i>
+                  <div class="bevel-value">
+                    <strong id="strainVal">--</strong><span>%</span>
+                    <em id="strainRaw">RAW -- / 21</em>
+                  </div>
                 </div>
                 <p class="score-desc" id="strainDesc">Daily cardiovascular load from active energy, exercise minutes and gate activity.</p>
               </div>
@@ -249,12 +249,12 @@
                 <span class="score-tag" id="sleepTag">NO DATA</span>
               </div>
               <div class="score-main">
-                <div class="ring">
-                  <svg viewBox="0 0 120 120" aria-hidden="true">
-                    <circle class="ring-track" cx="60" cy="60" r="52"/>
-                    <circle class="ring-value" id="sleepRing" cx="60" cy="60" r="52"/>
-                  </svg>
-                  <div class="ring-label"><strong id="sleepVal">--</strong><span>/ 100</span></div>
+                <div class="bevel-gauge" id="sleepBevel" role="img" aria-label="Sleep: no data">
+                  <i class="bevel-fill" aria-hidden="true"></i>
+                  <div class="bevel-value">
+                    <strong id="sleepVal">--</strong><span>%</span>
+                    <em id="sleepRaw">RAW -- / 100</em>
+                  </div>
                 </div>
                 <p class="score-desc" id="sleepDesc">Sleep debt, duration and stage balance from your watch's overnight readings.</p>
               </div>
@@ -1127,13 +1127,13 @@
   <input type="file" id="backupInput" accept=".json,application/json" hidden />
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="firebase-config.js?v=15"></script>
-  <script src="js/data.js?v=15"></script>
-  <script src="js/ui.js?v=15"></script>
-  <script src="js/training.js?v=15"></script>
-  <script src="js/body.js?v=15"></script>
-  <script src="js/cloud.js?v=15"></script>
-  <script src="js/health.js?v=15"></script>
-  <script src="js/app.js?v=15"></script>
+  <script src="firebase-config.js?v=16"></script>
+  <script src="js/data.js?v=16"></script>
+  <script src="js/ui.js?v=16"></script>
+  <script src="js/training.js?v=16"></script>
+  <script src="js/body.js?v=16"></script>
+  <script src="js/cloud.js?v=16"></script>
+  <script src="js/health.js?v=16"></script>
+  <script src="js/app.js?v=16"></script>
 </body>
 </html>

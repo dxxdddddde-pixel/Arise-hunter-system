@@ -12,7 +12,6 @@
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
     }[c]));
 
-  const CIRC = 326.73;
   let gateFilter = "week";
   let currentView = "status";
 
@@ -21,14 +20,21 @@
   /* ---------------------------------------------------------
      small view helpers
      --------------------------------------------------------- */
-  function ring(el, value, max) {
+  function scorePercent(value, max) {
+    if (value === null || value === undefined || !Number(max)) return null;
+    return Math.max(0, Math.min(100, (Number(value) / Number(max)) * 100));
+  }
+
+  function setBevel(el, value, max, rawEl, label) {
     if (!el) return;
-    if (value === null || value === undefined) {
-      el.style.strokeDashoffset = String(CIRC);
-      return;
+    const pct = scorePercent(value, max);
+    el.style.setProperty("--fill", (pct === null ? 0 : pct).toFixed(2) + "%");
+    el.setAttribute("aria-label", label + ": " + (pct === null ? "no data" : Math.round(pct) + " percent"));
+    if (rawEl) {
+      rawEl.textContent = value === null || value === undefined
+        ? "RAW -- / " + max
+        : "RAW " + (Math.round(Number(value) * 10) / 10) + " / " + max;
     }
-    const pct = Math.max(0, Math.min(1, value / max));
-    el.style.strokeDashoffset = String(CIRC * (1 - pct));
   }
 
   function sparkline(values, color, max) {
@@ -187,8 +193,8 @@
     const s = dash.scores;
 
     // recovery
-    ring($("#recoveryRing"), s.recovery, 100);
-    $("#recoveryVal").textContent = s.recovery === null ? "--" : String(s.recovery);
+    setBevel($("#recoveryBevel"), s.recovery, 100, $("#recoveryRaw"), "Recovery");
+    $("#recoveryVal").textContent = s.recovery === null ? "--" : String(Math.round(scorePercent(s.recovery, 100)));
     $("#cardRecovery").classList.toggle("is-empty", s.recovery === null);
     $("#recoveryTag").textContent =
       s.recovery === null ? "NO DATA" :
@@ -201,8 +207,8 @@
     $("#recoverySpark").innerHTML = sparkline(dash.series.recovery, "#54ffc1", 100);
 
     // strain
-    ring($("#strainRing"), s.strain, 21);
-    $("#strainVal").textContent = s.strain === null ? "--" : String(s.strain);
+    setBevel($("#strainBevel"), s.strain, 21, $("#strainRaw"), "Strain");
+    $("#strainVal").textContent = s.strain === null ? "--" : String(Math.round(scorePercent(s.strain, 21)));
     $("#cardStrain").classList.toggle("is-empty", s.strain === null);
     $("#strainTag").textContent =
       s.strain === null ? "NO DATA" :
@@ -215,8 +221,8 @@
     $("#strainSpark").innerHTML = sparkline(dash.series.strain, "#ff9a5c", 21);
 
     // sleep
-    ring($("#sleepRing"), s.sleep, 100);
-    $("#sleepVal").textContent = s.sleep === null ? "--" : String(s.sleep);
+    setBevel($("#sleepBevel"), s.sleep, 100, $("#sleepRaw"), "Sleep");
+    $("#sleepVal").textContent = s.sleep === null ? "--" : String(Math.round(scorePercent(s.sleep, 100)));
     $("#cardSleep").classList.toggle("is-empty", s.sleep === null);
     $("#sleepTag").textContent =
       s.sleep === null ? "NO DATA" :
